@@ -150,8 +150,10 @@ export default function Home() {
   // Find routes matching current deck (static + generated custom routes)
   const getMatchingCombos = () => {
     if (!deckList) return [];
-    const pool = [...ALL_COMBO_ROUTES, ...customRoutes];
-    return findMatchingRoutes(deckList, pool);
+    const matchedStatic = findMatchingRoutes(deckList, ALL_COMBO_ROUTES);
+    const customMap = new Map(customRoutes.map(r => [r.id, r]));
+    const uniqueCustom = Array.from(customMap.values());
+    return [...matchedStatic, ...uniqueCustom];
   };
 
   // Start practicing a route
@@ -394,6 +396,7 @@ export default function Home() {
                 onExportRoute={handleExportCombo}
                 onImportCombo={handleImportCombo}
                 customRouteIds={new Set(customRoutes.map(r => r.id))}
+                deckCardIds={new Set([...deckList.main, ...deckList.extra, ...deckList.side])}
               />
             </div>
           </div>

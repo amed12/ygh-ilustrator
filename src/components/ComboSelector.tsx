@@ -2,6 +2,7 @@
 
 import React, { useRef } from 'react';
 import { ComboRoute } from '../types';
+import { CARD_REGISTRY } from '../data/cards';
 import { Play, Tag, Lightbulb, Sparkle, UploadSimple, DownloadSimple } from '@phosphor-icons/react';
 
 interface ComboSelectorProps {
@@ -13,6 +14,7 @@ interface ComboSelectorProps {
   onExportRoute?: (route: ComboRoute) => void;
   onImportCombo?: (file: File) => void;
   customRouteIds?: Set<string>;
+  deckCardIds?: Set<string>;
 }
 
 export function ComboSelector({
@@ -23,7 +25,8 @@ export function ComboSelector({
   hasAiConfig,
   onExportRoute,
   onImportCombo,
-  customRouteIds = new Set()
+  customRouteIds = new Set(),
+  deckCardIds = new Set()
 }: ComboSelectorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -86,6 +89,26 @@ export function ComboSelector({
                     </span>
                   </div>
                 </div>
+
+                {(() => {
+                  const missingCards = deckCardIds.size > 0 
+                    ? route.requiredCards.filter(id => !deckCardIds.has(id))
+                    : [];
+                  if (missingCards.length === 0) return null;
+                  
+                  const missingCardNames = missingCards
+                    .map(id => CARD_REGISTRY[id]?.name || `Card #${id}`)
+                    .join(', ');
+                    
+                  return (
+                    <div 
+                      className="inline-flex items-center gap-1 rounded bg-red-500/10 border border-red-500/20 px-2 py-0.5 text-[9px] font-semibold text-red-400 font-mono w-fit"
+                      title={`Missing: ${missingCardNames}`}
+                    >
+                      <span>⚠️ Missing {missingCards.length} starter card{missingCards.length !== 1 ? 's' : ''}</span>
+                    </div>
+                  );
+                })()}
 
                 <p className="text-xs text-zinc-400 leading-relaxed">
                   {route.description}
