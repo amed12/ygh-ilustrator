@@ -4,12 +4,32 @@ export interface Card {
   imageUrl: string;
 }
 
+export interface StateMutations {
+  hand: { add: string[]; remove: string[] };
+  field: { add: string[]; remove: string[] };
+  gy: { add: string[]; remove: string[] };
+  banished: { add: string[]; remove: string[] };
+}
+
+export interface ComboResponse {
+  trigger: 'success' | 'ash_blossom' | 'imperm_veiler' | 'nibiru' | 'maxx_c' | 'generic_negate' | string;
+  next_step: number | null;
+}
+
 export interface ComboStep {
   id: number;
   action: string;
   cardId: string;
-  next_success: number | null;
-  next_negated: number | null;
+  next_success?: number | null; // Deprecated
+  next_negated?: number | null; // Deprecated
+  responses?: ComboResponse[];
+  stateMutations?: StateMutations;
+}
+
+export interface EndBoard {
+  monsters: string[];
+  spellsTraps: string[];
+  interruptions: string[];
 }
 
 export interface ComboRoute {
@@ -20,6 +40,7 @@ export interface ComboRoute {
   requiredCards: string[];
   steps: ComboStep[];
   tags: string[];
+  endBoard?: EndBoard;
 }
 
 export interface DeckList {

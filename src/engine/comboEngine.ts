@@ -1,4 +1,4 @@
-import { ComboRoute, ComboStep, DeckList } from '../types';
+import { ComboRoute, ComboStep, DeckList, ComboResponse } from '../types';
 
 /**
  * Checks if a given deck contains all required cards for a combo route.
@@ -14,14 +14,21 @@ export function findMatchingRoutes(deck: DeckList, allRoutes: ComboRoute[]): Com
 
 export interface ComboHistoryItem {
   step: ComboStep;
-  outcome: 'success' | 'negated';
+  trigger: string;
+}
+
+export interface VirtualState {
+  hand: string[];
+  field: string[];
+  gy: string[];
+  banished: string[];
 }
 
 /**
  * Creates a stateful combo state machine for navigating steps.
  * Provides O(1) step lookup via a local Map.
  */
-export function createEngine(route: ComboRoute) {
+export function createEngine(route: ComboRoute, initialHand: string[] = []) {
   // O(1) map lookup
   const stepMap = new Map<number, ComboStep>();
   route.steps.forEach(step => {
@@ -43,26 +50,26 @@ export function createEngine(route: ComboRoute) {
     return step;
   };
 
-  const canAdvance = (outcome: 'success' | 'negated'): boolean => {
-    if (currentStepId === null) return false;
+  const getAvailableResponses = (): ComboResponse[] => {
+    if (currentStepId === null) return [];
     const step = stepMap.get(currentStepId);
-    if (!step) return false;
-    
-    if (outcome === 'success') {
-      return step.next_success !== null;
-    } else {
-      return step.next_negated !== null;
-    }
+    if (!step || !step.responses) return [];
+    return step.responses;
   };
 
-  const advance = (outcome: 'success' | 'negated'): ComboStep | null => {
+  const advance = (trigger: string): ComboStep | null => {
     if (currentStepId === null) return null;
     const currentStep = getCurrentStep();
     
-    // Log current step and the chosen outcome in history
-    history.push({ step: currentStep, outcome });
+    const response = currentStep.responses?.find(r => r.trigger === trigger);
+    if (!response) {
+      return null;
+    }
+
+    // Log current step and the chosen trigger in history
+    history.push({ step: currentStep, trigger });
     
-    const nextId = outcome === 'success' ? currentStep.next_success : currentStep.next_negated;
+    const nextId = response.next_step;
     currentStepId = nextId;
     
     return nextId !== null ? stepMap.get(nextId) || null : null;
@@ -80,7 +87,12 @@ export function createEngine(route: ComboRoute) {
   const isComplete = (): boolean => {
     if (currentStepId === null) return true; // Reached end of path
     const currentStep = stepMap.get(currentStepId);
-    return currentStep ? (currentStep.next_success === null && currentStep.next_negated === null) : true;
+    if (!currentStep) return true;
+    
+    if (currentStep.responses && currentStep.responses.length > 0) {
+      return false; // has at least one possible continuation
+    }
+    return true;
   };
 
   const getProgress = (): { current: number; total: number } => {
@@ -91,14 +103,61 @@ export function createEngine(route: ComboRoute) {
     return { current, total };
   };
 
+  const getVirtualState = (): VirtualState => {
+    const state: VirtualState = {
+      hand: [...initialHand],
+      field: [],
+      gy: [],
+      banished: []
+    };
+
+    // Replay mutations up to current point in history
+    for (const h of history) {
+      const muts = h.step.stateMutations;
+      if (!muts) continue;
+
+      if (muts.hand) {
+        muts.hand.remove.forEach(id => {
+          const idx = state.hand.indexOf(id);
+          if (idx !== -1) state.hand.splice(idx, 1);
+        });
+        state.hand.push(...muts.hand.add);
+      }
+      if (muts.field) {
+        muts.field.remove.forEach(id => {
+          const idx = state.field.indexOf(id);
+          if (idx !== -1) state.field.splice(idx, 1);
+        });
+        state.field.push(...muts.field.add);
+      }
+      if (muts.gy) {
+        muts.gy.remove.forEach(id => {
+          const idx = state.gy.indexOf(id);
+          if (idx !== -1) state.gy.splice(idx, 1);
+        });
+        state.gy.push(...muts.gy.add);
+      }
+      if (muts.banished) {
+        muts.banished.remove.forEach(id => {
+          const idx = state.banished.indexOf(id);
+          if (idx !== -1) state.banished.splice(idx, 1);
+        });
+        state.banished.push(...muts.banished.add);
+      }
+    }
+    return state;
+  };
+
   return {
     getCurrentStep,
+    getAvailableResponses,
     advance,
-    canAdvance,
     reset,
     getHistory,
     isComplete,
-    getProgress
+    getProgress,
+    getVirtualState
   };
 }
+
 export type ComboEngine = ReturnType<typeof createEngine>;
