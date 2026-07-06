@@ -49,7 +49,7 @@ export interface DeckList {
   side: string[];
 }
 
-export type AIProvider = 'gemini' | 'openai' | 'anthropic' | 'openrouter';
+export type AIProvider = 'gemini' | 'openai' | 'anthropic' | 'openrouter' | 'deepseek';
 
 export interface AISettings {
   provider: AIProvider;

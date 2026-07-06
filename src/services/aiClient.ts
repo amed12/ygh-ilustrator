@@ -49,9 +49,13 @@ export const PROVIDER_MODELS: Record<string, AIModelOption[]> = {
     { id: 'claude-3-5-haiku-latest', name: 'Claude 3.5 Haiku' }
   ],
   openrouter: [
-    { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3' },
+    { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3 (OpenRouter)' },
     { id: 'meta-llama/llama-3.3-70b-instruct', name: 'Llama 3.3 70B' },
     { id: 'google/gemini-2.5-flash', name: 'Gemini 2.5 Flash (OpenRouter)' }
+  ],
+  deepseek: [
+    { id: 'deepseek-chat', name: 'DeepSeek V3 (Direct)' },
+    { id: 'deepseek-reasoner', name: 'DeepSeek R1 (Reasoner)' }
   ]
 };
 
@@ -185,6 +189,28 @@ export async function generateAICombo(
       if (!response.ok) {
         const errText = await response.text();
         throw new Error(`OpenRouter API Error (${response.status}): ${errText}`);
+      }
+
+      const resJson = await response.json();
+      responseText = resJson.choices?.[0]?.message?.content || '';
+    } else if (provider === 'deepseek') {
+      const url = 'https://api.deepseek.com/chat/completions';
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${key}`
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: prompt }],
+          ...(model === 'deepseek-chat' ? { response_format: { type: 'json_object' } } : {})
+        })
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`DeepSeek API Error (${response.status}): ${errText}`);
       }
 
       const resJson = await response.json();

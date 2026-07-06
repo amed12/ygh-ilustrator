@@ -121,7 +121,8 @@ export function SettingsModal({ isOpen, onClose, settings, onSave }: SettingsMod
                   <option value="gemini">Google Gemini</option>
                   <option value="openai">OpenAI</option>
                   <option value="anthropic">Anthropic (Claude)</option>
-                  <option value="openrouter">OpenRouter / DeepSeek</option>
+                  <option value="deepseek">DeepSeek (Direct)</option>
+                  <option value="openrouter">OpenRouter</option>
                 </select>
               </div>
 
