@@ -16,9 +16,31 @@ export function FlowChart({ route, currentStepId, history }: FlowChartProps) {
   const successPointers = new Set(history.filter(h => h.outcome === 'success').map(h => h.step.id));
   const negatedPointers = new Set(history.filter(h => h.outcome === 'negated').map(h => h.step.id));
 
-  // Partition steps into main line (usually low IDs) and fallback lines (usually high IDs, >= 10)
-  const mainLineSteps = route.steps.filter(s => s.id < 10);
-  const fallbackSteps = route.steps.filter(s => s.id >= 10);
+  // Dynamically trace the main success line from the first step in the route
+  const mainLineSteps: ComboStep[] = [];
+  const fallbackSteps: ComboStep[] = [];
+
+  if (route.steps.length > 0) {
+    const stepMap = new Map(route.steps.map(s => [s.id, s]));
+    const mainSet = new Set<number>();
+    let current: ComboStep | undefined = route.steps[0];
+
+    while (current) {
+      mainLineSteps.push(current);
+      mainSet.add(current.id);
+      if (current.next_success !== null && stepMap.has(current.next_success) && !mainSet.has(current.next_success)) {
+        current = stepMap.get(current.next_success);
+      } else {
+        break;
+      }
+    }
+
+    route.steps.forEach(s => {
+      if (!mainSet.has(s.id)) {
+        fallbackSteps.push(s);
+      }
+    });
+  }
 
 
 
