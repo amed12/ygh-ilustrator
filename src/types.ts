@@ -36,3 +36,16 @@ export interface AISettings {
   customApiKey: string;
   useDemo: boolean;
 }
+
+export interface ComboHandContext {
+  handCardIds: string[];
+  turnPosition: 'going-first' | 'going-second';
+  generatedAt: string;
+}
+
+export interface ComboExportFile {
+  version: '1.0';
+  exportedAt: string;
+  route: ComboRoute;
+  handContext?: ComboHandContext;
+}
