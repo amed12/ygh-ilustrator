@@ -8,7 +8,16 @@ export function findMatchingRoutes(deck: DeckList, allRoutes: ComboRoute[]): Com
   const allCardsInDeck = new Set<string>([...deck.main, ...deck.extra, ...deck.side]);
   
   return allRoutes.filter(route => {
-    return route.requiredCards.every(cardId => allCardsInDeck.has(cardId));
+    // 1. Must contain all required starters in the deck
+    const hasRequired = route.requiredCards.every(cardId => allCardsInDeck.has(cardId));
+    if (!hasRequired) return false;
+
+    // 2. Must contain all cards referenced in the steps (excluding reserved keyword actions)
+    return route.steps.every(step => {
+      const uCardId = step.cardId.toUpperCase();
+      if (['NONE', 'TOKEN', 'OPPONENT'].includes(uCardId)) return true;
+      return allCardsInDeck.has(step.cardId);
+    });
   });
 }
 

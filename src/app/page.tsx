@@ -154,7 +154,8 @@ export default function Home() {
     const matchedStatic = findMatchingRoutes(deckList, ALL_COMBO_ROUTES);
     const customMap = new Map(customRoutes.map(r => [r.id, r]));
     const uniqueCustom = Array.from(customMap.values());
-    return [...matchedStatic, ...uniqueCustom];
+    const matchedCustom = findMatchingRoutes(deckList, uniqueCustom);
+    return [...matchedStatic, ...matchedCustom];
   };
 
   // Start practicing a route
