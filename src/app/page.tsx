@@ -9,7 +9,8 @@ import { ComboNavigator } from '../components/ComboNavigator';
 import { SettingsModal } from '../components/SettingsModal';
 import { ComboGenerator } from '../components/ComboGenerator';
 import { HandSelector } from '../components/HandSelector';
-import { DeckList, ComboRoute, AISettings, ComboStep, ComboHandContext } from '../types';
+import { CardTooltip } from '../components/CardTooltip';
+import { DeckList, ComboRoute, AISettings, ComboStep, ComboHandContext, YGOPROCardDetails } from '../types';
 import { TurnPosition } from '../services/prompts';
 import { ALL_COMBO_ROUTES } from '../data/combos';
 import { CARD_REGISTRY } from '../data/cards';
@@ -60,6 +61,13 @@ export default function Home() {
   // Map of generated route ID to its hand context
   const [handContexts, setHandContexts] = useState<Record<string, ComboHandContext>>({});
 
+  // Card details database state
+  const [cardDetails, setCardDetails] = useState<Record<string, YGOPROCardDetails>>({});
+
+  // Tooltip tracking state
+  const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
+  const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
   // Hand selector modal state
   const [isHandSelectorOpen, setIsHandSelectorOpen] = useState(false);
 
@@ -73,7 +81,70 @@ export default function Home() {
   const handleImportDeck = (deck: DeckList) => {
     setDeckList(deck);
     setSelectedRoute(null);
+    loadCardDetailsForDeck(deck);
     setView('deck');
+  };
+
+  // Helper to fetch details for all cards in a deck in chunks
+  const loadCardDetailsForDeck = async (deck: DeckList) => {
+    interface YGOPROApiCard {
+      id: number;
+      name: string;
+      type: string;
+      desc: string;
+      atk?: number;
+      def?: number;
+      level?: number;
+      race: string;
+      attribute?: string;
+      archetype?: string;
+    }
+
+    const uniqueIds = Array.from(new Set([...deck.main, ...deck.extra, ...deck.side]));
+    const chunkSize = 25;
+    const detailsMap: Record<string, YGOPROCardDetails> = {};
+    
+    for (let i = 0; i < uniqueIds.length; i += chunkSize) {
+      const chunk = uniqueIds.slice(i, i + chunkSize);
+      try {
+        const url = `https://db.ygoprodeck.com/api/v7/cardinfo.php?id=${chunk.join(',')}`;
+        const response = await fetch(url);
+        if (response.ok) {
+          const res = await response.json();
+          res.data?.forEach((card: YGOPROApiCard) => {
+            detailsMap[String(card.id)] = {
+              id: String(card.id),
+              name: card.name,
+              type: card.type,
+              desc: card.desc,
+              atk: card.atk,
+              def: card.def,
+              level: card.level,
+              race: card.race,
+              attribute: card.attribute,
+              archetype: card.archetype
+            };
+          });
+        }
+      } catch (e) {
+        console.error('Failed to fetch card details for chunk:', chunk, e);
+      }
+    }
+    
+    setCardDetails(prev => ({ ...prev, ...detailsMap }));
+  };
+
+  const handleCardMouseEnter = (cardId: string, e: React.MouseEvent) => {
+    setHoveredCardId(cardId);
+    setTooltipPosition({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleCardMouseMove = (e: React.MouseEvent) => {
+    setTooltipPosition({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleCardMouseLeave = () => {
+    setHoveredCardId(null);
   };
 
   // Find routes matching current deck (static + generated custom routes)
@@ -125,7 +196,9 @@ export default function Home() {
     const uniqueIds = Array.from(new Set([...deck.main, ...deck.extra, ...deck.side]));
 
     uniqueIds.forEach(id => {
-      if (CARD_REGISTRY[id]) {
+      if (cardDetails[id]) {
+        nameMap[id] = cardDetails[id].name;
+      } else if (CARD_REGISTRY[id]) {
         nameMap[id] = CARD_REGISTRY[id].name;
       } else {
         missingIds.push(id);
@@ -304,6 +377,9 @@ export default function Home() {
               <DeckGrid 
                 deck={deckList} 
                 highlightedCards={getHighlightedCards()} 
+                onCardMouseEnter={handleCardMouseEnter}
+                onCardMouseLeave={handleCardMouseLeave}
+                onCardMouseMove={handleCardMouseMove}
               />
             </div>
 
@@ -339,6 +415,9 @@ export default function Home() {
                 ? () => handleExportCombo(selectedRoute)
                 : undefined
             }
+            onCardMouseEnter={handleCardMouseEnter}
+            onCardMouseLeave={handleCardMouseLeave}
+            onCardMouseMove={handleCardMouseMove}
           />
         )}
       </main>
@@ -366,8 +445,18 @@ export default function Home() {
           onClose={() => setIsHandSelectorOpen(false)}
           onConfirm={handleGenerateAI}
           isGenerating={isAiGenerating}
+          onCardMouseEnter={handleCardMouseEnter}
+          onCardMouseLeave={handleCardMouseLeave}
+          onCardMouseMove={handleCardMouseMove}
         />
       )}
+
+      {/* Card Info Popup Tooltip */}
+      <CardTooltip 
+        cardId={hoveredCardId} 
+        position={tooltipPosition} 
+        details={hoveredCardId ? cardDetails[hoveredCardId] : undefined} 
+      />
     </div>
   );
 }
