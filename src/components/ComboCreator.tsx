@@ -1,17 +1,30 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { DeckList, ComboRoute, ComboStep, ComboResponse, EndBoard } from '../types';
 import { CARD_REGISTRY } from '../data/cards';
+import { CardDisplay } from './CardDisplay';
 import { X, Plus, Trash, Sparkle, ArrowLeft, FloppyDisk, DownloadSimple } from '@phosphor-icons/react';
 
 interface ComboCreatorProps {
   deck: DeckList;
+  defaultArchetype?: string;
   onSave: (route: ComboRoute) => void;
   onCancel: () => void;
+  onCardMouseEnter?: (cardId: string, e: React.MouseEvent) => void;
+  onCardMouseLeave?: () => void;
+  onCardMouseMove?: (e: React.MouseEvent) => void;
 }
 
-export function ComboCreator({ deck, onSave, onCancel }: ComboCreatorProps) {
+export function ComboCreator({
+  deck,
+  defaultArchetype = '',
+  onSave,
+  onCancel,
+  onCardMouseEnter,
+  onCardMouseLeave,
+  onCardMouseMove
+}: ComboCreatorProps) {
   const [activeTab, setActiveTab] = useState<'info' | 'steps' | 'endboard'>('info');
 
   // Basic Info State
@@ -40,7 +53,27 @@ export function ComboCreator({ deck, onSave, onCancel }: ComboCreatorProps) {
   const [interruptions, setInterruptions] = useState<string[]>([]);
   const [interruptionInput, setInterruptionInput] = useState('');
 
-  // Deduplicated deck cards for selections
+  // Auto-populate archetype if fetched asynchronously
+  useEffect(() => {
+    if (defaultArchetype && !archetype) {
+      setArchetype(defaultArchetype);
+    }
+  }, [defaultArchetype]);
+
+  // Group deck cards for starters selector (Main deck only since starters must be in hand)
+  const mainDeckEntries = useMemo(() => {
+    const countMap = new Map<string, number>();
+    deck.main.forEach(id => {
+      countMap.set(id, (countMap.get(id) || 0) + 1);
+    });
+    return Array.from(countMap.entries()).map(([id, deckCount]) => ({
+      id,
+      deckCount,
+      name: CARD_REGISTRY[id]?.name || `Card #${id}`
+    }));
+  }, [deck.main]);
+
+  // Deduplicated deck cards for step & endboard dropdowns/lists
   const allUniqueDeckCards = useMemo(() => {
     const ids = Array.from(new Set([...deck.main, ...deck.extra]));
     return ids.map(id => ({
@@ -61,10 +94,29 @@ export function ComboCreator({ deck, onSave, onCancel }: ComboCreatorProps) {
     setTags(tags.filter((_, i) => i !== index));
   };
 
+  // Toggle required card starter (matches HandSelector logic supporting duplicate counts)
   const toggleRequiredCard = (cardId: string) => {
-    setRequiredCards(prev => 
-      prev.includes(cardId) ? prev.filter(id => id !== cardId) : [...prev, cardId]
-    );
+    setRequiredCards(prev => {
+      const currentCount = prev.filter(id => id === cardId).length;
+      const maxCopies = deck.main.filter(id => id === cardId).length;
+
+      if (currentCount >= maxCopies) {
+        // Remove one copy
+        const idx = prev.indexOf(cardId);
+        if (idx !== -1) {
+          const next = [...prev];
+          next.splice(idx, 1);
+          return next;
+        }
+        return prev;
+      }
+      // Add one copy
+      return [...prev, cardId];
+    });
+  };
+
+  const getRequiredCardCount = (cardId: string) => {
+    return requiredCards.filter(id => id === cardId).length;
   };
 
   // Step Management
@@ -195,7 +247,7 @@ export function ComboCreator({ deck, onSave, onCancel }: ComboCreatorProps) {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-6 max-w-5xl mx-auto">
       {/* Top Header Bar */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-zinc-900 pb-4">
         <div className="space-y-1">
@@ -251,8 +303,8 @@ export function ComboCreator({ deck, onSave, onCancel }: ComboCreatorProps) {
 
       {/* Tab Content 1: Basic Info & Starters */}
       {activeTab === 'info' && (
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-          <div className="md:col-span-7 space-y-4 rounded-xl border border-zinc-900 bg-zinc-950 p-5">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div className="lg:col-span-6 space-y-4 rounded-xl border border-zinc-900 bg-zinc-950 p-5">
             <h3 className="text-xs font-mono uppercase tracking-wider text-zinc-400">Basic Information</h3>
             
             <div className="space-y-3">
@@ -320,32 +372,59 @@ export function ComboCreator({ deck, onSave, onCancel }: ComboCreatorProps) {
             </div>
           </div>
 
-          {/* Starters Selector */}
-          <div className="md:col-span-5 rounded-xl border border-zinc-900 bg-zinc-950 p-5 space-y-4">
+          {/* Starters Grid Selector (Matches HandSelector Card Picker) */}
+          <div className="lg:col-span-6 rounded-xl border border-zinc-900 bg-zinc-950 p-5 space-y-4 flex flex-col max-h-[500px]">
             <div>
-              <h3 className="text-xs font-mono uppercase tracking-wider text-zinc-400">Required Starters</h3>
-              <p className="text-[10px] text-zinc-500 mt-1">Select the cards that must be in the opening hand to trigger this combo.</p>
+              <h3 className="text-xs font-mono uppercase tracking-wider text-zinc-400 flex justify-between items-center">
+                <span>Required Starters</span>
+                <span className="text-[10px] font-mono text-zinc-500 font-normal">
+                  {requiredCards.length} Selected
+                </span>
+              </h3>
+              <p className="text-[10px] text-zinc-500 mt-1">Click cards below to toggle them as required starters for the opening hand.</p>
             </div>
             
-            <div className="max-h-[300px] overflow-y-auto border border-zinc-900 rounded p-2 space-y-1 custom-scrollbar bg-zinc-950/60">
-              {allUniqueDeckCards.filter(c => !c.isExtra).map(card => {
-                const isSelected = requiredCards.includes(card.id);
-                return (
-                  <button
-                    key={card.id}
-                    type="button"
-                    onClick={() => toggleRequiredCard(card.id)}
-                    className={`w-full flex items-center justify-between p-2 rounded text-left text-xs transition-colors ${
-                      isSelected 
-                        ? 'bg-emerald-950/20 hover:bg-emerald-950/30 text-emerald-300 border border-emerald-900/50' 
-                        : 'hover:bg-zinc-905 border border-transparent text-zinc-400'
-                    }`}
-                  >
-                    <span>{card.name}</span>
-                    {isSelected && <span className="text-[9px] font-mono text-emerald-400">Selected</span>}
-                  </button>
-                );
-              })}
+            <div className="flex-1 overflow-y-auto border border-zinc-900 rounded p-3 bg-zinc-950/60 custom-scrollbar">
+              <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-6 gap-2">
+                {mainDeckEntries.map((entry) => {
+                  const selectedCount = getRequiredCardCount(entry.id);
+                  const isSelected = selectedCount > 0;
+                  return (
+                    <div
+                      key={entry.id}
+                      onClick={() => toggleRequiredCard(entry.id)}
+                      className={`relative cursor-pointer rounded-lg transition-all ${
+                        isSelected
+                          ? 'ring-2 ring-emerald-500/60 shadow-[0_0_12px_rgba(16,185,129,0.25)]'
+                          : 'hover:ring-1 hover:ring-zinc-705'
+                      }`}
+                    >
+                      <CardDisplay 
+                        cardId={entry.id} 
+                        size="sm" 
+                        glow={isSelected} 
+                        onMouseEnter={onCardMouseEnter}
+                        onMouseLeave={onCardMouseLeave}
+                        onMouseMove={onCardMouseMove}
+                      />
+
+                      {/* Selection badge */}
+                      {isSelected && (
+                        <span className="absolute -top-1 -right-1 z-10 flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500 border-2 border-zinc-950 text-[9px] font-bold text-white shadow-lg">
+                          {selectedCount}
+                        </span>
+                      )}
+
+                      {/* Deck count indicator */}
+                      {entry.deckCount > 1 && (
+                        <span className="absolute bottom-0.5 right-0.5 z-10 rounded bg-zinc-900/90 border border-zinc-800 px-1 py-[1px] text-[8px] font-mono text-zinc-400">
+                          ×{entry.deckCount}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </div>

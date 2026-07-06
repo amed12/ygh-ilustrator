@@ -336,6 +336,32 @@ export default function Home() {
     selectedRoute ? ((selectedRoute.steps.find(s => s.id === currentStepId)?.responses?.length || 0) === 0) : true
   );
 
+  const getDominantArchetype = () => {
+    if (!deckList) return '';
+    const counts: Record<string, number> = {};
+    const allCards = [...deckList.main, ...deckList.extra];
+    allCards.forEach(id => {
+      const arch = cardDetails[id]?.archetype || (
+        CARD_REGISTRY[id]?.name && CARD_REGISTRY[id].name.includes(' - ')
+          ? CARD_REGISTRY[id].name.split(' - ')[0]
+          : undefined
+      );
+      if (arch) {
+        counts[arch] = (counts[arch] || 0) + 1;
+      }
+    });
+
+    let dominant = '';
+    let maxCount = 0;
+    for (const [arch, count] of Object.entries(counts)) {
+      if (count > maxCount) {
+        maxCount = count;
+        dominant = arch;
+      }
+    }
+    return dominant;
+  };
+
   const getHighlightedCards = () => {
     if (selectedRoute) {
       return selectedRoute.requiredCards;
@@ -451,12 +477,16 @@ export default function Home() {
         {view === 'create-combo' && deckList && (
           <ComboCreator
             deck={deckList}
+            defaultArchetype={getDominantArchetype()}
             onSave={(newRoute) => {
               // Add to memory list
               setCustomRoutes(prev => [newRoute, ...prev]);
               setView('deck');
             }}
             onCancel={() => setView('deck')}
+            onCardMouseEnter={handleCardMouseEnter}
+            onCardMouseLeave={handleCardMouseLeave}
+            onCardMouseMove={handleCardMouseMove}
           />
         )}
       </main>
