@@ -8,7 +8,9 @@ import { ComboSelector } from '../components/ComboSelector';
 import { ComboNavigator } from '../components/ComboNavigator';
 import { SettingsModal } from '../components/SettingsModal';
 import { ComboGenerator } from '../components/ComboGenerator';
+import { HandSelector } from '../components/HandSelector';
 import { DeckList, ComboRoute, AISettings, ComboStep } from '../types';
+import { TurnPosition } from '../services/prompts';
 import { ALL_COMBO_ROUTES } from '../data/combos';
 import { CARD_REGISTRY } from '../data/cards';
 import { findMatchingRoutes } from '../engine/comboEngine';
@@ -53,6 +55,9 @@ export default function Home() {
 
   // Dynamic database of generated routes (extends static routes in runtime memory)
   const [customRoutes, setCustomRoutes] = useState<ComboRoute[]>([]);
+
+  // Hand selector modal state
+  const [isHandSelectorOpen, setIsHandSelectorOpen] = useState(false);
 
   // Save settings helper
   const handleSaveSettings = (newSettings: AISettings) => {
@@ -149,15 +154,21 @@ export default function Home() {
     return nameMap;
   };
 
-  // Dynamic AI combo generation solver trigger
-  const handleGenerateAI = async () => {
+  // Open hand selector instead of directly generating
+  const handleOpenHandSelector = () => {
+    setIsHandSelectorOpen(true);
+  };
+
+  // Dynamic AI combo generation solver trigger (now receives hand cards + turn position)
+  const handleGenerateAI = async (handCards: string[], turnPosition: TurnPosition) => {
     if (!deckList) return;
+    setIsHandSelectorOpen(false);
     setIsAiGenerating(true);
     setAiError(null);
 
     try {
       const cardNames = await getCardNamesForDeck(deckList);
-      const generated = await generateAICombo(deckList, cardNames, settings);
+      const generated = await generateAICombo(deckList, cardNames, settings, handCards, turnPosition);
       
       // Save in runtime memory database
       setCustomRoutes(prev => [generated, ...prev]);
@@ -264,7 +275,7 @@ export default function Home() {
               <ComboSelector
                 matchingRoutes={getMatchingCombos()}
                 onSelectRoute={handleStartCombo}
-                onGenerateAI={handleGenerateAI}
+                onGenerateAI={handleOpenHandSelector}
                 isAiGenerating={isAiGenerating}
                 hasAiConfig={!settings.useDemo && settings.customApiKey.trim() !== ''}
               />
@@ -300,6 +311,17 @@ export default function Home() {
         error={aiError}
         onClearError={() => setAiError(null)}
       />
+
+      {/* Hand Selector Modal */}
+      {deckList && (
+        <HandSelector
+          deck={deckList}
+          isOpen={isHandSelectorOpen}
+          onClose={() => setIsHandSelectorOpen(false)}
+          onConfirm={handleGenerateAI}
+          isGenerating={isAiGenerating}
+        />
+      )}
     </div>
   );
 }

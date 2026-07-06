@@ -5,7 +5,7 @@ import { CARD_REGISTRY } from '../data/cards';
 
 interface CardDisplayProps {
   cardId: string;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'xs' | 'sm' | 'md' | 'lg';
   glow?: boolean;
 }
 
@@ -20,6 +20,7 @@ export function CardDisplay({ cardId, size = 'md', glow = false }: CardDisplayPr
   };
 
   const sizeClasses = {
+    xs: 'w-10 h-14 text-[8px]',
     sm: 'w-12 h-18 text-[10px]',
     md: 'w-24 h-36 text-xs',
     lg: 'w-48 h-72 text-sm'
