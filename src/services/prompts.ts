@@ -49,21 +49,19 @@ ${handCardsList}
 
 CRITICAL HAND RULES:
 1. The combo MUST begin from the cards in the OPENING HAND above. Step 1 must use a hand card.
-2. You may reference Extra Deck cards for Synchro/XYZ/Link/Fusion summons during the combo (they are available face-down in the Extra Deck).
-3. You may reference Main Deck cards that are searched/milled/drawn during the combo steps (e.g. via search effects like "Raidraptor - Nest"), but the STARTING plays must come from hand cards.
-4. The "requiredCards" field must ONLY contain card IDs from the opening hand that are essential starters for this combo.
-5. The hand may contain more than 5 cards (due to effects like Maxx "C", Pot of Desires, etc.). Use ALL relevant hand cards if they contribute to the combo.
+2. You may reference Extra Deck cards for Synchro/XYZ/Link/Fusion summons during the combo.
+3. The "requiredCards" field must ONLY contain card IDs from the opening hand that are essential starters for this combo.
+4. The hand may contain more than 5 cards (e.g. from Maxx "C"). Use ALL relevant hand cards.
 
 STRICT DESIGN RULES (CRITICAL):
 1. NO CARD HALLUCINATION: You may ONLY use cards that exist in the provided mainDeckIds and extraDeckIds.
-2. Every step in the combo MUST reference a cardId that is physically present in the deck list. Never reference cards outside this deck.
-3. Incorporate branching logic! If there is a key bottleneck/search/summon effect (like Force Strix search, or a Wise Strix summon), define a "Negated" path.
-4. The success path should flow sequentially from step 1 to N (using next_success).
-5. Negated paths should branch to fallback steps using high step IDs (step IDs 100+, such as 100, 101, 102, to prevent any duplicate ID collisions with the main success line), which eventually terminate with next_success = null and next_negated = null (e.g., pivot to a defensive Abyss Dweller, Bagooska, set backrow, or Zeus line).
-6. next_success = null indicates the combo is complete.
-7. next_negated = null indicates that if the negate occurs, there is no recovery line (e.g. pass turn).
-8. Ensure all step IDs are unique 1-indexed integers.
-9. Every next_success and next_negated value MUST point to another step id that exists in the same steps list, or be null. No broken pointers.
+2. BRANCHING & FALLBACKS: Yu-Gi-Oh is highly interactive. Do NOT just provide a single linear success path. You MUST provide alternative branches using the "responses" array for EACH step if applicable.
+   - Triggers can be: "success", "ash_blossom", "imperm_veiler", "nibiru", "maxx_c", "generic_negate".
+   - "next_step: null" indicates the combo ends there.
+3. THE MAXX "C" CHALLENGE: If going first, you MUST provide an explicit early fallback path if 'Maxx C' is activated in response to the first Special Summon. This route should minimize opponent draws while establishing a minimal interruption (e.g., Rank 4 Bagooska or a set trap). Use trigger "maxx_c".
+4. STATE MUTATIONS: For each step, track virtual state changes. If you discard a card from hand, list it in stateMutations.hand.remove and gy.add.
+5. END BOARD: Summarize the final board state in the "endBoard" object.
+6. IDs: Ensure all step IDs are unique 1-indexed integers. No broken pointers.
 
 DECK LIST:
 ---
@@ -78,24 +76,38 @@ ${deckListJSON}
 ---
 
 OUTPUT FORMAT:
-You must respond with ONLY a valid, raw JSON object matching the schema below. No markdown wrappers, no backticks (e.g. do not wrap in \`\`\`json), and no explanatory text. Just the raw JSON object.
+You must respond with ONLY a valid, raw JSON object matching the schema below. No markdown wrappers, no backticks, no explanatory text.
 
 JSON SCHEMA:
 {
   "id": "string (unique string id, e.g. 'combo-wise-strix-opening')",
   "name": "string (descriptive name of the combo, max 45 chars)",
-  "archetype": "string (primary archetype, e.g., 'Raidraptor')",
+  "archetype": "string (primary archetype)",
   "description": "string (1-2 sentence description explaining the end board or goal)",
-  "requiredCards": ["string", "string"], // ONLY card IDs from the opening hand that are essential starters
+  "requiredCards": ["string"], // ONLY card IDs from the opening hand that are essential starters
+  "endBoard": {
+    "monsters": ["string (card IDs)"],
+    "spellsTraps": ["string (card IDs)"],
+    "interruptions": ["string (human-readable, e.g. '1 Omni-Negate', '1 GY Banish')"]
+  },
   "steps": [
     {
-      "id": 1, // unique integer
-      "action": "string (human-readable step action instruction, max 70 chars, e.g. 'Normal Summon Tribute Lanius')",
-      "cardId": "string (the card passcode/id from the deck list involved in this step)",
-      "next_success": 2, // next step ID if successful, or null if combo complete
-      "next_negated": 100 // step ID to pivot to if this step gets negated/handtrapped (use 100+ for fallbacks), or null if pass turn
+      "id": 1,
+      "action": "string (human-readable step action instruction)",
+      "cardId": "string (the card passcode/id involved)",
+      "responses": [
+        { "trigger": "success", "next_step": 2 },
+        { "trigger": "ash_blossom", "next_step": 10 },
+        { "trigger": "maxx_c", "next_step": 11 }
+      ],
+      "stateMutations": {
+        "hand": { "add": ["id"], "remove": ["id"] },
+        "field": { "add": ["id"], "remove": ["id"] },
+        "gy": { "add": ["id"], "remove": ["id"] },
+        "banished": { "add": ["id"], "remove": ["id"] }
+      }
     }
   ],
-  "tags": ["${turnPosition}" | "otk" | "grind" | "defensive"] // 1-3 tags, MUST include "${turnPosition}"
+  "tags": ["${turnPosition}" | "otk" | "grind" | "defensive"]
 }`;
 }

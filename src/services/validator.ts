@@ -1,4 +1,4 @@
-import { ComboRoute, ComboStep, DeckList } from '../types';
+import { ComboRoute, ComboStep, DeckList, ComboResponse } from '../types';
 
 export interface ValidationResult {
   valid: boolean;
@@ -44,6 +44,14 @@ export function validateComboRoute(raw: unknown, deckList: DeckList): Validation
     errors.push('tags must be an array.');
   }
 
+  // EndBoard Validation
+  if (data.endBoard && typeof data.endBoard === 'object') {
+    const eb = data.endBoard as Record<string, unknown>;
+    if (!Array.isArray(eb.monsters)) errors.push('endBoard.monsters must be an array.');
+    if (!Array.isArray(eb.spellsTraps)) errors.push('endBoard.spellsTraps must be an array.');
+    if (!Array.isArray(eb.interruptions)) errors.push('endBoard.interruptions must be an array.');
+  }
+
   const stepsList = data.steps as Record<string, unknown>[];
   const verifiedSteps: ComboStep[] = [];
   const stepIds = new Set<number>();
@@ -73,29 +81,62 @@ export function validateComboRoute(raw: unknown, deckList: DeckList): Validation
     if (typeof rawStep.cardId !== 'string') {
       errors.push(`Step ${stepNum} (ID: ${rawStep.id}): missing string "cardId".`);
     } else if (!allDeckCards.has(rawStep.cardId)) {
-      // BANNED: Card hallucination check
       errors.push(`Step ${stepNum} (ID: ${rawStep.id}): Card ID "${rawStep.cardId}" (${rawStep.action}) is not in the imported deck.`);
     }
 
-    const nextSuccess = rawStep.next_success === null ? null : Number(rawStep.next_success);
-    const nextNegated = rawStep.next_negated === null ? null : Number(rawStep.next_negated);
+    // Process responses
+    const verifiedResponses: ComboResponse[] = [];
+    if (Array.isArray(rawStep.responses)) {
+      for (const res of rawStep.responses) {
+        if (typeof res.trigger !== 'string') {
+          errors.push(`Step ID ${rawStep.id}: response missing string 'trigger'.`);
+        }
+        const nextStep = res.next_step === null ? null : Number(res.next_step);
+        if (nextStep !== null && isNaN(nextStep)) {
+          errors.push(`Step ID ${rawStep.id}: response next_step must be number or null.`);
+        }
+        verifiedResponses.push({
+          trigger: String(res.trigger || ''),
+          next_step: isNaN(nextStep as number) ? null : nextStep
+        });
+      }
+    } else {
+      // Backwards compatibility or error
+      const nSuccess = rawStep.next_success === null ? null : Number(rawStep.next_success);
+      const nNegated = rawStep.next_negated === null ? null : Number(rawStep.next_negated);
+      if (!isNaN(nSuccess as number) || nSuccess === null) {
+        verifiedResponses.push({ trigger: 'success', next_step: nSuccess as (number|null) });
+      }
+      if (nNegated !== null && !isNaN(nNegated as number)) {
+        verifiedResponses.push({ trigger: 'generic_negate', next_step: nNegated as number });
+      }
+    }
+
+    // Simple parsing of state mutations without strict schema block
+    const verifiedMutations = rawStep.stateMutations as any || {
+      hand: { add: [], remove: [] },
+      field: { add: [], remove: [] },
+      gy: { add: [], remove: [] },
+      banished: { add: [], remove: [] }
+    };
     
     verifiedSteps.push({
       id: rawStep.id,
       action: String(rawStep.action || ''),
       cardId: String(rawStep.cardId || ''),
-      next_success: isNaN(nextSuccess as number) ? null : nextSuccess,
-      next_negated: isNaN(nextNegated as number) ? null : nextNegated
+      responses: verifiedResponses,
+      stateMutations: verifiedMutations
     });
   }
 
   // Step 2: Validate pointers
   for (const step of verifiedSteps) {
-    if (step.next_success !== null && !stepIds.has(step.next_success)) {
-      errors.push(`Step ID ${step.id}: "next_success" points to non-existent step ID ${step.next_success}.`);
-    }
-    if (step.next_negated !== null && !stepIds.has(step.next_negated)) {
-      errors.push(`Step ID ${step.id}: "next_negated" points to non-existent step ID ${step.next_negated}.`);
+    if (step.responses) {
+      for (const res of step.responses) {
+        if (res.next_step !== null && !stepIds.has(res.next_step)) {
+          errors.push(`Step ID ${step.id}: response points to non-existent step ID ${res.next_step}.`);
+        }
+      }
     }
   }
 
@@ -111,9 +152,10 @@ export function validateComboRoute(raw: unknown, deckList: DeckList): Validation
     recStack.add(stepId);
     
     const step = verifiedSteps.find(s => s.id === stepId);
-    if (step) {
-      if (step.next_success !== null && hasCycle(step.next_success)) return true;
-      if (step.next_negated !== null && hasCycle(step.next_negated)) return true;
+    if (step && step.responses) {
+      for (const res of step.responses) {
+        if (res.next_step !== null && hasCycle(res.next_step)) return true;
+      }
     }
     
     recStack.delete(stepId);
@@ -142,7 +184,8 @@ export function validateComboRoute(raw: unknown, deckList: DeckList): Validation
       description: String(data.description || ''),
       requiredCards: (data.requiredCards as string[]).map(String),
       steps: verifiedSteps,
-      tags: (data.tags as string[] || []).map(String)
+      tags: (data.tags as string[] || []).map(String),
+      endBoard: data.endBoard as any
     },
     errors: []
   };
