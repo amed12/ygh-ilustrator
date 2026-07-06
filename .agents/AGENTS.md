@@ -60,3 +60,7 @@
 - Every time code is added, changed, or removed, you MUST run the git commit workflow following the `smart-conventional-commits` skill.
 - Do NOT run `git add .` to stage all changes at once if they have different purposes. Group files logically, stage them separately, and commit using Conventional Commits v1.0.0.
 - End your run by checking and committing all uncommitted changes.
+
+### 9. FRONTEND DESIGN & TASTE
+- Before creating or modifying UI components, layouts, or stylesheets, you MUST read and follow the guidelines in the `design-taste-frontend` skill.
+- Enforce custom typography (e.g. Outfit + JetBrains Mono pairings), strict tactile active states (`active:scale-[0.98]`), shape consistency locks, proper image loading skeletons, and contrast accessibility (WCAG AA contrast minimums) across all UI implementations.
