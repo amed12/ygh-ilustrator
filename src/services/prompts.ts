@@ -1,17 +1,31 @@
 import { DeckList } from '../types';
 
+export type TurnPosition = 'going-first' | 'going-second';
+
 /**
  * Builds a strict, structured prompt template for LLMs to generate Yu-Gi-Oh combos.
  * Ensures the response matches our types.ts schema exactly and avoids card hallucinations.
+ *
+ * @param deckList     - The full imported deck list (main/extra/side).
+ * @param cardNames    - Resolved card name map (passcode → name).
+ * @param handCards    - Card IDs the player currently has in hand (no upper limit).
+ * @param turnPosition - Whether the player is going first or second.
  */
 export function buildComboPrompt(
   deckList: DeckList,
-  cardNames: Record<string, string>
+  cardNames: Record<string, string>,
+  handCards: string[],
+  turnPosition: TurnPosition
 ): string {
   // Format deck list for prompt
   const mainCards = deckList.main.map(id => `- ID: ${id} (${cardNames[id] || 'Unknown Card'})`).join('\n');
   const extraCards = deckList.extra.map(id => `- ID: ${id} (${cardNames[id] || 'Unknown Card'})`).join('\n');
-  
+
+  // Format hand cards
+  const handCardsList = handCards
+    .map(id => `- ID: ${id} (${cardNames[id] || 'Unknown Card'})`)
+    .join('\n');
+
   const deckListJSON = JSON.stringify({
     mainCount: deckList.main.length,
     extraCount: deckList.extra.length,
@@ -19,9 +33,26 @@ export function buildComboPrompt(
     extraDeckIds: deckList.extra
   }, null, 2);
 
+  const turnContext = turnPosition === 'going-first'
+    ? `The player is GOING FIRST. There is no Battle Phase this turn. The goal is to build the strongest possible end board with negates, floodgates, and/or interruptions before passing turn. Do NOT include attacks or battle damage steps.`
+    : `The player is GOING SECOND. The opponent already has an established board. The goal is to break the opponent's board and push for an OTK (One Turn Kill) if possible, or at minimum clear threats and establish advantage. Include Battle Phase attacks if the combo leads to lethal damage.`;
+
   return `You are an expert competitive Yu-Gi-Oh! TCG / Master Duel deck analyst and professional combo designer.
 
-Analyze the provided deck list below and generate a single optimal combo route (called a ComboRoute) that the player can execute.
+The player has drawn their opening hand and needs an optimal combo route. Analyze the hand cards and the full deck context to generate the best possible play sequence.
+
+TURN POSITION:
+${turnContext}
+
+OPENING HAND (${handCards.length} cards):
+${handCardsList}
+
+CRITICAL HAND RULES:
+1. The combo MUST begin from the cards in the OPENING HAND above. Step 1 must use a hand card.
+2. You may reference Extra Deck cards for Synchro/XYZ/Link/Fusion summons during the combo (they are available face-down in the Extra Deck).
+3. You may reference Main Deck cards that are searched/milled/drawn during the combo steps (e.g. via search effects like "Raidraptor - Nest"), but the STARTING plays must come from hand cards.
+4. The "requiredCards" field must ONLY contain card IDs from the opening hand that are essential starters for this combo.
+5. The hand may contain more than 5 cards (due to effects like Maxx "C", Pot of Desires, etc.). Use ALL relevant hand cards if they contribute to the combo.
 
 STRICT DESIGN RULES (CRITICAL):
 1. NO CARD HALLUCINATION: You may ONLY use cards that exist in the provided mainDeckIds and extraDeckIds.
@@ -55,7 +86,7 @@ JSON SCHEMA:
   "name": "string (descriptive name of the combo, max 45 chars)",
   "archetype": "string (primary archetype, e.g., 'Raidraptor')",
   "description": "string (1-2 sentence description explaining the end board or goal)",
-  "requiredCards": ["string", "string"], // The core card IDs from the deck list that are required to initiate this combo
+  "requiredCards": ["string", "string"], // ONLY card IDs from the opening hand that are essential starters
   "steps": [
     {
       "id": 1, // unique integer
@@ -65,6 +96,6 @@ JSON SCHEMA:
       "next_negated": 10 // step ID to pivot to if this step gets negated/handtrapped, or null if pass turn
     }
   ],
-  "tags": ["going-first" | "going-second" | "otk" | "grind" | "defensive"] // 1-3 tags
+  "tags": ["${turnPosition}" | "otk" | "grind" | "defensive"] // 1-3 tags, MUST include "${turnPosition}"
 }`;
 }

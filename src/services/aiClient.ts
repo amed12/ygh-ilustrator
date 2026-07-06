@@ -1,5 +1,5 @@
 import { AISettings, ComboRoute, DeckList } from '../types';
-import { buildComboPrompt } from './prompts';
+import { buildComboPrompt, TurnPosition } from './prompts';
 import { validateComboRoute } from './validator';
 
 /**
@@ -60,9 +60,11 @@ export const PROVIDER_MODELS: Record<string, AIModelOption[]> = {
 export async function generateAICombo(
   deckList: DeckList,
   cardNames: Record<string, string>,
-  settings: AISettings
+  settings: AISettings,
+  handCards: string[],
+  turnPosition: TurnPosition
 ): Promise<ComboRoute> {
-  const prompt = buildComboPrompt(deckList, cardNames);
+  const prompt = buildComboPrompt(deckList, cardNames, handCards, turnPosition);
 
   let responseText = '';
 
