@@ -49,7 +49,7 @@ export default function Home() {
   // Active route practice state
   const [selectedRoute, setSelectedRoute] = useState<ComboRoute | null>(null);
   const [currentStepId, setCurrentStepId] = useState<number | null>(null);
-  const [comboHistory, setComboHistory] = useState<{ step: ComboStep; outcome: 'success' | 'negated' }[]>([]);
+  const [comboHistory, setComboHistory] = useState<{ step: ComboStep; trigger: string }[]>([]);
   
   // AI generation loading states
   const [isAiGenerating, setIsAiGenerating] = useState(false);
@@ -169,15 +169,16 @@ export default function Home() {
   };
 
   // State advance logic
-  const handleAdvanceCombo = (outcome: 'success' | 'negated') => {
+  const handleAdvanceCombo = (trigger: string) => {
     if (!selectedRoute || currentStepId === null) return;
     const stepMap = new Map(selectedRoute.steps.map(s => [s.id, s]));
     const currentStep = stepMap.get(currentStepId);
     if (!currentStep) return;
 
-    setComboHistory(prev => [...prev, { step: currentStep, outcome }]);
+    setComboHistory(prev => [...prev, { step: currentStep, trigger }]);
 
-    const nextId = outcome === 'success' ? currentStep.next_success : currentStep.next_negated;
+    const response = currentStep.responses?.find(r => r.trigger === trigger);
+    const nextId = response ? response.next_step : null;
     setCurrentStepId(nextId);
   };
 
@@ -309,8 +310,7 @@ export default function Home() {
   };
 
   const isComboComplete = currentStepId === null || (
-    selectedRoute ? (selectedRoute.steps.find(s => s.id === currentStepId)?.next_success === null && 
-                     selectedRoute.steps.find(s => s.id === currentStepId)?.next_negated === null) : true
+    selectedRoute ? ((selectedRoute.steps.find(s => s.id === currentStepId)?.responses?.length || 0) === 0) : true
   );
 
   const getHighlightedCards = () => {

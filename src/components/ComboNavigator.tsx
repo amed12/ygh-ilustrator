@@ -1,20 +1,20 @@
 'use client';
 
 import React from 'react';
-import { ComboRoute, ComboStep, ComboHandContext } from '../types';
+import { ComboRoute, ComboStep, ComboHandContext, ComboResponse } from '../types';
 import { CardDisplay } from './CardDisplay';
 import { StepTimeline } from './StepTimeline';
 import { FlowChart } from './FlowChart';
 import { OpeningHandPanel } from './OpeningHandPanel';
-import { ArrowLeft, ArrowCounterClockwise, DownloadSimple, Check, Prohibit, Trophy, SmileySad } from '@phosphor-icons/react';
+import { ArrowLeft, ArrowCounterClockwise, DownloadSimple, Check, Trophy, SmileySad, XCircle } from '@phosphor-icons/react';
 
 interface ComboNavigatorProps {
   route: ComboRoute;
   currentStep: ComboStep | null;
-  history: { step: ComboStep; outcome: 'success' | 'negated' }[];
+  history: { step: ComboStep; trigger: string }[];
   isComplete: boolean;
   progress: { current: number; total: number };
-  onAdvance: (outcome: 'success' | 'negated') => void;
+  onAdvance: (trigger: string) => void;
   onReset: () => void;
   onBackToDeck: () => void;
   handContext?: ComboHandContext;
@@ -40,8 +40,22 @@ export function ComboNavigator({
   onCardMouseMove
 }: ComboNavigatorProps) {
 
-  const canClickSuccess = currentStep && currentStep.next_success !== null;
-  const canClickNegated = currentStep && currentStep.next_negated !== null;
+  const formatTriggerLabel = (trigger: string) => {
+    return trigger.replace(/_/g, ' ').toUpperCase();
+  };
+
+  const getTriggerIcon = (trigger: string) => {
+    if (trigger === 'success') return <Check size={18} weight="bold" className="group-hover:scale-110 transition-transform" />;
+    return <XCircle size={18} weight="bold" className="group-hover:scale-110 transition-transform" />;
+  };
+
+  const getTriggerColor = (trigger: string) => {
+    if (trigger === 'success') return 'border-emerald-950 bg-emerald-950/10 hover:bg-emerald-950/30 text-emerald-400';
+    if (trigger === 'maxx_c') return 'border-orange-950 bg-orange-950/10 hover:bg-orange-950/30 text-orange-400';
+    if (trigger === 'ash_blossom') return 'border-pink-950 bg-pink-950/10 hover:bg-pink-950/30 text-pink-400';
+    if (trigger === 'nibiru') return 'border-yellow-950 bg-yellow-950/10 hover:bg-yellow-950/30 text-yellow-400';
+    return 'border-red-950 bg-red-950/10 hover:bg-red-950/30 text-red-400';
+  };
 
   return (
     <div className="space-y-6">
@@ -136,41 +150,27 @@ export function ComboNavigator({
               </div>
 
               {/* Action Buttons Panel */}
-              <div className="w-full grid grid-cols-2 gap-4 border-t border-zinc-900 pt-4">
-                {/* SUCCESS button */}
-                <button
-                  onClick={() => onAdvance('success')}
-                  disabled={!canClickSuccess && currentStep.next_success === null && currentStep.next_negated === null}
-                  className="group flex flex-col items-center justify-center gap-1 p-3 rounded-lg border border-emerald-950 bg-emerald-950/10 hover:bg-emerald-950/30 text-emerald-400 font-semibold transition-all active:scale-[0.98] active:translate-y-[1px] disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                >
-                  <Check size={18} weight="bold" className="group-hover:scale-110 transition-transform" />
-                  <span className="text-xs uppercase tracking-wider font-mono">Success</span>
-                  <span className="text-[9px] text-zinc-500 font-normal">Next step</span>
-                </button>
-
-                {/* NEGATED button */}
-                <button
-                  onClick={() => onAdvance('negated')}
-                  disabled={!canClickNegated}
-                  className={`group flex flex-col items-center justify-center gap-1 p-3 rounded-lg border transition-all active:scale-[0.98] active:translate-y-[1px] disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer ${
-                    canClickNegated 
-                      ? 'border-red-950 bg-red-950/10 hover:bg-red-950/30 text-red-400 font-semibold' 
-                      : 'border-zinc-900 bg-zinc-900/10 text-zinc-600'
-                  }`}
-                >
-                  <Prohibit size={18} weight="bold" className="group-hover:scale-110 transition-transform" />
-                  <span className="text-xs uppercase tracking-wider font-mono">Negated</span>
-                  <span className="text-[9px] text-zinc-500 font-normal">
-                    {canClickNegated ? 'Branch pivot' : 'No recovery'}
-                  </span>
-                </button>
+              <div className="w-full flex flex-wrap justify-center gap-3 border-t border-zinc-900 pt-4">
+                {currentStep.responses?.map((res: ComboResponse) => (
+                  <button
+                    key={res.trigger}
+                    onClick={() => onAdvance(res.trigger)}
+                    className={`group flex flex-col items-center justify-center gap-1 p-3 min-w-[100px] rounded-lg border transition-all active:scale-[0.98] active:translate-y-[1px] cursor-pointer ${getTriggerColor(res.trigger)}`}
+                  >
+                    {getTriggerIcon(res.trigger)}
+                    <span className="text-xs uppercase tracking-wider font-mono mt-1">{formatTriggerLabel(res.trigger)}</span>
+                    <span className="text-[9px] opacity-60 font-normal">
+                      {res.next_step ? 'Pivot' : 'End Line'}
+                    </span>
+                  </button>
+                ))}
               </div>
             </>
           ) : (
             /* Combo Completed State */
             <div className="w-full flex flex-col items-center justify-center py-10 space-y-6">
               {/* Check if last action outcome was success or failure */}
-              {history.length > 0 && history[history.length - 1].outcome === 'success' ? (
+              {history.length > 0 && history[history.length - 1].trigger === 'success' ? (
                 <>
                   <div className="w-16 h-16 flex items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-[0_0_20px_rgba(16,185,129,0.2)] animate-bounce">
                     <Trophy size={32} weight="duotone" />
@@ -183,6 +183,35 @@ export function ComboNavigator({
                       You successfully navigated all the steps and established your final board. Well played!
                     </p>
                   </div>
+                  
+                  {/* End Board Summary */}
+                  {route.endBoard && (
+                    <div className="w-full mt-4 text-left border border-zinc-800 bg-zinc-900/50 rounded-lg p-4">
+                      <h4 className="text-[10px] font-mono text-zinc-400 uppercase mb-3">Final Board State</h4>
+                      <div className="space-y-3">
+                        {route.endBoard.interruptions && route.endBoard.interruptions.length > 0 && (
+                          <div>
+                            <span className="text-[10px] text-emerald-400 uppercase font-bold block mb-1">Interruptions</span>
+                            <ul className="list-disc pl-4 text-xs text-zinc-300">
+                              {route.endBoard.interruptions.map((int, i) => (
+                                <li key={i}>{int}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        <div className="flex gap-4">
+                          <div className="flex-1">
+                            <span className="text-[10px] text-indigo-400 uppercase block mb-1">Monsters</span>
+                            <div className="flex flex-wrap gap-1">
+                              {route.endBoard.monsters?.map((id, i) => (
+                                <span key={i} className="text-[9px] bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-300">{id}</span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </>
               ) : (
                 <>
