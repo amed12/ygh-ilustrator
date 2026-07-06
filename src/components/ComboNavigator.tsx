@@ -1,11 +1,12 @@
 'use client';
 
 import React from 'react';
-import { ComboRoute, ComboStep } from '../types';
+import { ComboRoute, ComboStep, ComboHandContext } from '../types';
 import { CardDisplay } from './CardDisplay';
 import { StepTimeline } from './StepTimeline';
 import { FlowChart } from './FlowChart';
-import { ArrowLeft, ArrowCounterClockwise, Check, Prohibit, Trophy, SmileySad } from '@phosphor-icons/react';
+import { OpeningHandPanel } from './OpeningHandPanel';
+import { ArrowLeft, ArrowCounterClockwise, DownloadSimple, Check, Prohibit, Trophy, SmileySad } from '@phosphor-icons/react';
 
 interface ComboNavigatorProps {
   route: ComboRoute;
@@ -16,6 +17,8 @@ interface ComboNavigatorProps {
   onAdvance: (outcome: 'success' | 'negated') => void;
   onReset: () => void;
   onBackToDeck: () => void;
+  handContext?: ComboHandContext;
+  onExport?: () => void;
 }
 
 export function ComboNavigator({
@@ -26,7 +29,9 @@ export function ComboNavigator({
   progress,
   onAdvance,
   onReset,
-  onBackToDeck
+  onBackToDeck,
+  handContext,
+  onExport
 }: ComboNavigatorProps) {
 
   const canClickSuccess = currentStep && currentStep.next_success !== null;
@@ -52,13 +57,26 @@ export function ComboNavigator({
           </p>
         </div>
 
-        <button
-          onClick={onReset}
-          className="flex items-center gap-1.5 rounded-lg border border-zinc-800 hover:border-zinc-700 bg-zinc-900/40 hover:bg-zinc-900 px-3.5 py-2 text-xs font-semibold text-zinc-300 transition-all active:scale-[0.98]"
-        >
-          <ArrowCounterClockwise size={14} />
-          <span>Reset Combo</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {onExport && (
+            <button
+              onClick={onExport}
+              className="flex items-center gap-1.5 rounded-lg border border-zinc-800 hover:border-zinc-700 bg-zinc-900/40 hover:bg-zinc-900 px-3.5 py-2 text-xs font-semibold text-zinc-300 transition-all active:scale-[0.98]"
+              title="Export this custom combo to a JSON file"
+            >
+              <DownloadSimple size={14} />
+              <span>Export</span>
+            </button>
+          )}
+
+          <button
+            onClick={onReset}
+            className="flex items-center gap-1.5 rounded-lg border border-zinc-800 hover:border-zinc-700 bg-zinc-900/40 hover:bg-zinc-900 px-3.5 py-2 text-xs font-semibold text-zinc-300 transition-all active:scale-[0.98]"
+          >
+            <ArrowCounterClockwise size={14} />
+            <span>Reset Combo</span>
+          </button>
+        </div>
       </div>
 
       {/* Main Cockpit Layout */}
@@ -66,6 +84,7 @@ export function ComboNavigator({
         {/* Left Column: Timeline (Col 3) */}
         <div className="lg:col-span-3 space-y-4">
           <StepTimeline history={history} currentStep={currentStep} />
+          <OpeningHandPanel handContext={handContext} />
         </div>
 
         {/* Center Column: Control Room (Col 5) */}

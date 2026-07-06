@@ -1,8 +1,8 @@
 'use client';
 
-import React from 'react';
+import React, { useRef } from 'react';
 import { ComboRoute } from '../types';
-import { Play, Tag, Lightbulb, Sparkle } from '@phosphor-icons/react';
+import { Play, Tag, Lightbulb, Sparkle, UploadSimple, DownloadSimple } from '@phosphor-icons/react';
 
 interface ComboSelectorProps {
   matchingRoutes: ComboRoute[];
@@ -10,6 +10,9 @@ interface ComboSelectorProps {
   onGenerateAI: () => void;
   isAiGenerating: boolean;
   hasAiConfig: boolean;
+  onExportRoute?: (route: ComboRoute) => void;
+  onImportCombo?: (file: File) => void;
+  customRouteIds?: Set<string>;
 }
 
 export function ComboSelector({
@@ -17,8 +20,27 @@ export function ComboSelector({
   onSelectRoute,
   onGenerateAI,
   isAiGenerating,
-  hasAiConfig
+  hasAiConfig,
+  onExportRoute,
+  onImportCombo,
+  customRouteIds = new Set()
 }: ComboSelectorProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && onImportCombo) {
+      onImportCombo(file);
+    }
+    // Reset file input value so same file can be uploaded again
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -45,9 +67,24 @@ export function ComboSelector({
                   <h4 className="font-sans text-base font-bold text-zinc-100 group-hover:text-indigo-400 transition-colors">
                     {route.name}
                   </h4>
-                  <span className="rounded bg-zinc-900 border border-zinc-800 px-2 py-0.5 text-[10px] font-mono text-zinc-400 shrink-0">
-                    {route.steps.length} Steps
-                  </span>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {onExportRoute && customRouteIds.has(route.id) && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onExportRoute(route);
+                        }}
+                        className="rounded p-1 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 border border-transparent hover:border-zinc-800 transition-all"
+                        title="Export Combo JSON"
+                      >
+                        <DownloadSimple size={12} />
+                      </button>
+                    )}
+                    <span className="rounded bg-zinc-900 border border-zinc-800 px-2 py-0.5 text-[10px] font-mono text-zinc-400">
+                      {route.steps.length} Steps
+                    </span>
+                  </div>
                 </div>
 
                 <p className="text-xs text-zinc-400 leading-relaxed">
@@ -120,6 +157,31 @@ export function ComboSelector({
           )}
         </button>
       </div>
+
+      {/* Local File Import Panel */}
+      {onImportCombo && (
+        <div className="rounded-xl border border-zinc-900 bg-zinc-950 p-4 flex items-center justify-between gap-4">
+          <div className="space-y-0.5">
+            <h4 className="text-xs font-semibold text-zinc-300">Import Custom Playbook</h4>
+            <p className="text-[10px] text-zinc-500">Load a saved `.json` combo file from disk.</p>
+          </div>
+          <button
+            type="button"
+            onClick={handleImportClick}
+            className="flex items-center gap-1.5 rounded-lg border border-zinc-800 hover:border-zinc-700 bg-zinc-900/40 hover:bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-zinc-300 transition-all active:scale-[0.98]"
+          >
+            <UploadSimple size={12} />
+            <span>Import</span>
+          </button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept=".json"
+            className="hidden"
+          />
+        </div>
+      )}
     </div>
   );
 }

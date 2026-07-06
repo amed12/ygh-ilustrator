@@ -9,12 +9,13 @@ import { ComboNavigator } from '../components/ComboNavigator';
 import { SettingsModal } from '../components/SettingsModal';
 import { ComboGenerator } from '../components/ComboGenerator';
 import { HandSelector } from '../components/HandSelector';
-import { DeckList, ComboRoute, AISettings, ComboStep } from '../types';
+import { DeckList, ComboRoute, AISettings, ComboStep, ComboHandContext } from '../types';
 import { TurnPosition } from '../services/prompts';
 import { ALL_COMBO_ROUTES } from '../data/combos';
 import { CARD_REGISTRY } from '../data/cards';
 import { findMatchingRoutes } from '../engine/comboEngine';
 import { generateAICombo } from '../services/aiClient';
+import { exportComboToFile, importComboFromFile } from '../services/comboIO';
 
 const DEFAULT_SETTINGS: AISettings = {
   provider: 'gemini',
@@ -55,6 +56,9 @@ export default function Home() {
 
   // Dynamic database of generated routes (extends static routes in runtime memory)
   const [customRoutes, setCustomRoutes] = useState<ComboRoute[]>([]);
+
+  // Map of generated route ID to its hand context
+  const [handContexts, setHandContexts] = useState<Record<string, ComboHandContext>>({});
 
   // Hand selector modal state
   const [isHandSelectorOpen, setIsHandSelectorOpen] = useState(false);
@@ -170,6 +174,14 @@ export default function Home() {
       const cardNames = await getCardNamesForDeck(deckList);
       const generated = await generateAICombo(deckList, cardNames, settings, handCards, turnPosition);
       
+      // Store hand context
+      const newContext: ComboHandContext = {
+        handCardIds: handCards,
+        turnPosition,
+        generatedAt: new Date().toISOString()
+      };
+      setHandContexts(prev => ({ ...prev, [generated.id]: newContext }));
+
       // Save in runtime memory database
       setCustomRoutes(prev => [generated, ...prev]);
       
@@ -180,6 +192,31 @@ export default function Home() {
       setAiError(err);
     } finally {
       setIsAiGenerating(false);
+    }
+  };
+
+  // Export combo file helper
+  const handleExportCombo = (route: ComboRoute) => {
+    const context = handContexts[route.id];
+    exportComboToFile(route, context);
+  };
+
+  // Import combo file helper
+  const handleImportCombo = async (file: File) => {
+    try {
+      const { route, handContext } = await importComboFromFile(file);
+      
+      // Prevent duplicate IDs in current list
+      setCustomRoutes(prev => [route, ...prev.filter(r => r.id !== route.id)]);
+      
+      if (handContext) {
+        setHandContexts(prev => ({ ...prev, [route.id]: handContext }));
+      }
+      
+      alert(`Imported combo "${route.name}" successfully!`);
+    } catch (e: unknown) {
+      const err = e instanceof Error ? e.message : 'Unknown error';
+      alert(`Import failed: ${err}`);
     }
   };
 
@@ -278,6 +315,9 @@ export default function Home() {
                 onGenerateAI={handleOpenHandSelector}
                 isAiGenerating={isAiGenerating}
                 hasAiConfig={!settings.useDemo && settings.customApiKey.trim() !== ''}
+                onExportRoute={handleExportCombo}
+                onImportCombo={handleImportCombo}
+                customRouteIds={new Set(customRoutes.map(r => r.id))}
               />
             </div>
           </div>
@@ -293,6 +333,12 @@ export default function Home() {
             onAdvance={handleAdvanceCombo}
             onReset={handleResetCombo}
             onBackToDeck={() => setView('deck')}
+            handContext={handContexts[selectedRoute.id]}
+            onExport={
+              new Set(customRoutes.map(r => r.id)).has(selectedRoute.id)
+                ? () => handleExportCombo(selectedRoute)
+                : undefined
+            }
           />
         )}
       </main>
