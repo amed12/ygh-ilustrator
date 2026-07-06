@@ -13,9 +13,21 @@ interface HandSelectorProps {
   onClose: () => void;
   onConfirm: (handCards: string[], turnPosition: TurnPosition) => void;
   isGenerating: boolean;
+  onCardMouseEnter?: (cardId: string, e: React.MouseEvent) => void;
+  onCardMouseLeave?: () => void;
+  onCardMouseMove?: (e: React.MouseEvent) => void;
 }
 
-export function HandSelector({ deck, isOpen, onClose, onConfirm, isGenerating }: HandSelectorProps) {
+export function HandSelector({
+  deck,
+  isOpen,
+  onClose,
+  onConfirm,
+  isGenerating,
+  onCardMouseEnter,
+  onCardMouseLeave,
+  onCardMouseMove
+}: HandSelectorProps) {
   const [selectedCards, setSelectedCards] = useState<string[]>([]);
   const [turnPosition, setTurnPosition] = useState<TurnPosition>('going-first');
 
@@ -179,7 +191,14 @@ export function HandSelector({ deck, isOpen, onClose, onConfirm, isGenerating }:
                   className="relative shrink-0 cursor-pointer group"
                   onClick={() => removeCard(index)}
                 >
-                  <CardDisplay cardId={cardId} size="xs" glow />
+                  <CardDisplay 
+                    cardId={cardId} 
+                    size="xs" 
+                    glow 
+                    onMouseEnter={onCardMouseEnter}
+                    onMouseLeave={onCardMouseLeave}
+                    onMouseMove={onCardMouseMove}
+                  />
                   <div className="absolute inset-0 rounded-lg bg-red-500/0 group-hover:bg-red-500/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
                     <X size={16} className="text-red-400" weight="bold" />
                   </div>
@@ -214,7 +233,14 @@ export function HandSelector({ deck, isOpen, onClose, onConfirm, isGenerating }:
                       : 'hover:ring-1 hover:ring-zinc-700'
                   }`}
                 >
-                  <CardDisplay cardId={entry.id} size="sm" glow={isSelected} />
+                  <CardDisplay 
+                    cardId={entry.id} 
+                    size="sm" 
+                    glow={isSelected} 
+                    onMouseEnter={onCardMouseEnter}
+                    onMouseLeave={onCardMouseLeave}
+                    onMouseMove={onCardMouseMove}
+                  />
 
                   {/* Selection badge */}
                   {isSelected && (

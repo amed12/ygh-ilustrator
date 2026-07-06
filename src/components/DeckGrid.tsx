@@ -8,9 +8,18 @@ import { SquareHalf } from '@phosphor-icons/react';
 interface DeckGridProps {
   deck: DeckList;
   highlightedCards?: string[]; // Cards used in the current combo
+  onCardMouseEnter?: (cardId: string, e: React.MouseEvent) => void;
+  onCardMouseLeave?: () => void;
+  onCardMouseMove?: (e: React.MouseEvent) => void;
 }
 
-export function DeckGrid({ deck, highlightedCards = [] }: DeckGridProps) {
+export function DeckGrid({
+  deck,
+  highlightedCards = [],
+  onCardMouseEnter,
+  onCardMouseLeave,
+  onCardMouseMove
+}: DeckGridProps) {
   const [activeTab, setActiveTab] = useState<'main' | 'extra' | 'side'>('main');
 
   const highlightSet = new Set(highlightedCards);
@@ -100,6 +109,9 @@ export function DeckGrid({ deck, highlightedCards = [] }: DeckGridProps) {
                     cardId={cardId} 
                     size="sm" 
                     glow={shouldHighlight} 
+                    onMouseEnter={onCardMouseEnter}
+                    onMouseLeave={onCardMouseLeave}
+                    onMouseMove={onCardMouseMove}
                   />
                   {shouldHighlight && (
                     <span className="absolute -top-1 -right-1 z-10 w-2.5 h-2.5 rounded-full bg-indigo-500 border border-zinc-950 shadow shadow-indigo-500/50" />

@@ -7,9 +7,17 @@ import { Hand, SunHorizon, MoonStars, CalendarBlank } from '@phosphor-icons/reac
 
 interface OpeningHandPanelProps {
   handContext?: ComboHandContext;
+  onCardMouseEnter?: (cardId: string, e: React.MouseEvent) => void;
+  onCardMouseLeave?: () => void;
+  onCardMouseMove?: (e: React.MouseEvent) => void;
 }
 
-export function OpeningHandPanel({ handContext }: OpeningHandPanelProps) {
+export function OpeningHandPanel({
+  handContext,
+  onCardMouseEnter,
+  onCardMouseLeave,
+  onCardMouseMove
+}: OpeningHandPanelProps) {
   if (!handContext) return null;
 
   const dateStr = new Date(handContext.generatedAt).toLocaleDateString(undefined, {
@@ -50,7 +58,14 @@ export function OpeningHandPanel({ handContext }: OpeningHandPanelProps) {
       <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
         {handContext.handCardIds.map((cardId, index) => (
           <div key={`hand-${cardId}-${index}`} className="relative shrink-0">
-            <CardDisplay cardId={cardId} size="xs" glow={false} />
+            <CardDisplay 
+              cardId={cardId} 
+              size="xs" 
+              glow={false} 
+              onMouseEnter={onCardMouseEnter}
+              onMouseLeave={onCardMouseLeave}
+              onMouseMove={onCardMouseMove}
+            />
           </div>
         ))}
       </div>

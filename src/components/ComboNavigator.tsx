@@ -19,6 +19,9 @@ interface ComboNavigatorProps {
   onBackToDeck: () => void;
   handContext?: ComboHandContext;
   onExport?: () => void;
+  onCardMouseEnter?: (cardId: string, e: React.MouseEvent) => void;
+  onCardMouseLeave?: () => void;
+  onCardMouseMove?: (e: React.MouseEvent) => void;
 }
 
 export function ComboNavigator({
@@ -31,7 +34,10 @@ export function ComboNavigator({
   onReset,
   onBackToDeck,
   handContext,
-  onExport
+  onExport,
+  onCardMouseEnter,
+  onCardMouseLeave,
+  onCardMouseMove
 }: ComboNavigatorProps) {
 
   const canClickSuccess = currentStep && currentStep.next_success !== null;
@@ -84,7 +90,12 @@ export function ComboNavigator({
         {/* Left Column: Timeline (Col 3) */}
         <div className="lg:col-span-3 space-y-4">
           <StepTimeline history={history} currentStep={currentStep} />
-          <OpeningHandPanel handContext={handContext} />
+          <OpeningHandPanel 
+            handContext={handContext} 
+            onCardMouseEnter={onCardMouseEnter}
+            onCardMouseLeave={onCardMouseLeave}
+            onCardMouseMove={onCardMouseMove}
+          />
         </div>
 
         {/* Center Column: Control Room (Col 5) */}
@@ -104,7 +115,14 @@ export function ComboNavigator({
 
               {/* Central Card Display with Glow */}
               <div className="flex justify-center py-2">
-                <CardDisplay cardId={currentStep.cardId} size="lg" glow={true} />
+                <CardDisplay 
+                  cardId={currentStep.cardId} 
+                  size="lg" 
+                  glow={true} 
+                  onMouseEnter={onCardMouseEnter}
+                  onMouseLeave={onCardMouseLeave}
+                  onMouseMove={onCardMouseMove}
+                />
               </div>
 
               {/* Step Action Text */}

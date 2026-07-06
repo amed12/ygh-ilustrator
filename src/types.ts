@@ -49,3 +49,16 @@ export interface ComboExportFile {
   route: ComboRoute;
   handContext?: ComboHandContext;
 }
+
+export interface YGOPROCardDetails {
+  id: string;
+  name: string;
+  type: string;
+  desc: string;
+  atk?: number;
+  def?: number;
+  level?: number;
+  race: string;
+  attribute?: string;
+  archetype?: string;
+}

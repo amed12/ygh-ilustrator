@@ -7,9 +7,19 @@ interface CardDisplayProps {
   cardId: string;
   size?: 'xs' | 'sm' | 'md' | 'lg';
   glow?: boolean;
+  onMouseEnter?: (cardId: string, e: React.MouseEvent) => void;
+  onMouseLeave?: () => void;
+  onMouseMove?: (e: React.MouseEvent) => void;
 }
 
-export function CardDisplay({ cardId, size = 'md', glow = false }: CardDisplayProps) {
+export function CardDisplay({
+  cardId,
+  size = 'md',
+  glow = false,
+  onMouseEnter,
+  onMouseLeave,
+  onMouseMove
+}: CardDisplayProps) {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
 
@@ -28,6 +38,9 @@ export function CardDisplay({ cardId, size = 'md', glow = false }: CardDisplayPr
 
   return (
     <div 
+      onMouseEnter={(e) => onMouseEnter?.(cardId, e)}
+      onMouseLeave={onMouseLeave}
+      onMouseMove={onMouseMove}
       className={`relative select-none overflow-hidden rounded-lg bg-zinc-900 border transition-all duration-300 flex flex-col justify-center items-center text-center p-1 ${
         sizeClasses[size]
       } ${
