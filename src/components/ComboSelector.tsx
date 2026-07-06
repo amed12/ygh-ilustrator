@@ -12,7 +12,7 @@ interface ComboSelectorProps {
   isAiGenerating: boolean;
   hasAiConfig: boolean;
   onExportRoute?: (route: ComboRoute) => void;
-  onImportCombo?: (file: File) => void;
+  onImportCombo?: (files: File[]) => void;
   customRouteIds?: Set<string>;
   deckCardIds?: Set<string>;
 }
@@ -35,9 +35,9 @@ export function ComboSelector({
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file && onImportCombo) {
-      onImportCombo(file);
+    const files = e.target.files;
+    if (files && files.length > 0 && onImportCombo) {
+      onImportCombo(Array.from(files));
     }
     // Reset file input value so same file can be uploaded again
     if (fileInputRef.current) {
@@ -201,6 +201,7 @@ export function ComboSelector({
             ref={fileInputRef}
             onChange={handleFileChange}
             accept=".json"
+            multiple
             className="hidden"
           />
         </div>

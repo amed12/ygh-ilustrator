@@ -278,21 +278,43 @@ export default function Home() {
   };
 
   // Import combo file helper
-  const handleImportCombo = async (file: File) => {
+  const handleImportCombo = async (files: File[]) => {
     try {
-      const { route, handContext } = await importComboFromFile(file);
-      
-      // Prevent duplicate IDs in current list
-      setCustomRoutes(prev => [route, ...prev.filter(r => r.id !== route.id)]);
-      
-      if (handContext) {
-        setHandContexts(prev => ({ ...prev, [route.id]: handContext }));
+      const newRoutes: ComboRoute[] = [];
+      const newContexts = { ...handContexts };
+      let successCount = 0;
+
+      for (const file of files) {
+        try {
+          const { route, handContext } = await importComboFromFile(file);
+          newRoutes.push(route);
+          if (handContext) {
+            newContexts[route.id] = handContext;
+          }
+          successCount++;
+        } catch (err) {
+          console.error(`Import failed for ${file.name}:`, err);
+        }
+      }
+
+      if (successCount === 0 && files.length > 0) {
+        alert('Failed to import any combo files. Please check the console for details.');
+        return;
       }
       
-      alert(`Imported combo "${route.name}" successfully!`);
+      // Prevent duplicate IDs in current list
+      setCustomRoutes(prev => {
+        const combined = [...newRoutes, ...prev];
+        const unique = new Map(combined.map(r => [r.id, r]));
+        return Array.from(unique.values());
+      });
+      
+      setHandContexts(newContexts);
+      
+      alert(`Imported ${successCount} combo(s) successfully!`);
     } catch (e: unknown) {
       const err = e instanceof Error ? e.message : 'Unknown error';
-      alert(`Import failed: ${err}`);
+      alert(`Import process failed: ${err}`);
     }
   };
 
