@@ -55,13 +55,14 @@ CRITICAL HAND RULES:
 
 STRICT DESIGN RULES (CRITICAL):
 1. NO CARD HALLUCINATION: You may ONLY use cards that exist in the provided mainDeckIds and extraDeckIds.
-2. BRANCHING & FALLBACKS: Yu-Gi-Oh is highly interactive. Do NOT just provide a single linear success path. You MUST provide alternative branches using the "responses" array for EACH step if applicable.
+2. NON-DECK CARDS: If a step involves a Token, an opponent's card (e.g., Nibiru), or a generic action, set cardId to "TOKEN", "OPPONENT", or "NONE".
+3. BRANCHING & FALLBACKS: Yu-Gi-Oh is highly interactive. Do NOT just provide a single linear success path. You MUST provide alternative branches using the "responses" array for EACH step if applicable.
    - Triggers can be: "success", "ash_blossom", "imperm_veiler", "nibiru", "maxx_c", "generic_negate".
    - "next_step: null" indicates the combo ends there.
-3. THE MAXX "C" CHALLENGE: If going first, you MUST provide an explicit early fallback path if 'Maxx C' is activated in response to the first Special Summon. This route should minimize opponent draws while establishing a minimal interruption (e.g., Rank 4 Bagooska or a set trap). Use trigger "maxx_c".
-4. STATE MUTATIONS: For each step, track virtual state changes. If you discard a card from hand, list it in stateMutations.hand.remove and gy.add.
-5. END BOARD: Summarize the final board state in the "endBoard" object.
-6. IDs: Ensure all step IDs are unique 1-indexed integers. No broken pointers.
+4. THE MAXX "C" CHALLENGE: If going first, you MUST provide an explicit early fallback path if 'Maxx C' is activated in response to the first Special Summon. This route should minimize opponent draws while establishing a minimal interruption (e.g., Rank 4 Bagooska or a set trap). Use trigger "maxx_c".
+5. STATE MUTATIONS: For each step, track virtual state changes. If you discard a card from hand, list it in stateMutations.hand.remove and gy.add.
+6. END BOARD: Summarize the final board state in the "endBoard" object.
+7. IDs: Ensure all step IDs are unique 1-indexed integers. No broken pointers.
 
 DECK LIST:
 ---

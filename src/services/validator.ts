@@ -80,8 +80,11 @@ export function validateComboRoute(raw: unknown, deckList: DeckList): Validation
     
     if (typeof rawStep.cardId !== 'string') {
       errors.push(`Step ${stepNum} (ID: ${rawStep.id}): missing string "cardId".`);
-    } else if (!allDeckCards.has(rawStep.cardId)) {
-      errors.push(`Step ${stepNum} (ID: ${rawStep.id}): Card ID "${rawStep.cardId}" (${rawStep.action}) is not in the imported deck.`);
+    } else {
+      const uCardId = rawStep.cardId.toUpperCase();
+      if (!allDeckCards.has(rawStep.cardId) && !['TOKEN', 'OPPONENT', 'NONE'].includes(uCardId)) {
+        errors.push(`Step ${stepNum} (ID: ${rawStep.id}): Card ID "${rawStep.cardId}" (${rawStep.action}) is not in the imported deck.`);
+      }
     }
 
     // Process responses

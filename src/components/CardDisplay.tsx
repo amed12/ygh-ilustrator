@@ -23,11 +23,15 @@ export function CardDisplay({
   const [imageLoaded, setImageLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
 
-  const cardInfo = CARD_REGISTRY[cardId] || {
-    id: cardId,
-    name: `Card #${cardId}`,
-    imageUrl: `https://images.ygoprodeck.com/images/cards/${cardId}.jpg`
-  };
+  const isReserved = ['TOKEN', 'OPPONENT', 'NONE'].includes(cardId.toUpperCase());
+
+  const cardInfo = isReserved 
+    ? { id: cardId, name: `Generic Action (${cardId})`, imageUrl: '' }
+    : CARD_REGISTRY[cardId] || {
+        id: cardId,
+        name: `Card #${cardId}`,
+        imageUrl: `https://images.ygoprodeck.com/images/cards/${cardId}.jpg`
+      };
 
   const sizeClasses = {
     xs: 'w-10 h-14 text-[8px]',
@@ -62,7 +66,7 @@ export function CardDisplay({
       )}
 
       {/* Card Image */}
-      {!loadError ? (
+      {!loadError && !isReserved ? (
         <img
           src={cardInfo.imageUrl}
           alt={cardInfo.name}
@@ -76,7 +80,7 @@ export function CardDisplay({
           }`}
         />
       ) : (
-        /* Fallback Text card if broken link / offline */
+        /* Fallback Text card if broken link / offline or reserved keyword */
         <div className="w-full h-full flex flex-col justify-between p-2 bg-gradient-to-b from-zinc-850 to-zinc-950 rounded border border-zinc-800 text-zinc-300 overflow-hidden">
           <div className="font-mono text-[9px] text-zinc-500 text-left">#{cardInfo.id}</div>
           <div className="font-bold leading-tight line-clamp-4 break-words">
