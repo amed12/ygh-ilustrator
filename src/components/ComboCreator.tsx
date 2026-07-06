@@ -53,6 +53,10 @@ export function ComboCreator({
   const [interruptions, setInterruptions] = useState<string[]>([]);
   const [interruptionInput, setInterruptionInput] = useState('');
 
+  // Visual Card Picker Modal State
+  const [pickerStepId, setPickerStepId] = useState<number | null>(null);
+  const [pickerSearchQuery, setPickerSearchQuery] = useState('');
+
   // Auto-populate archetype if fetched asynchronously
   useEffect(() => {
     if (defaultArchetype && !archetype) {
@@ -246,6 +250,13 @@ export function ComboCreator({
     onSave(route);
   };
 
+  const getCardName = (cardId: string) => {
+    if (cardId === 'NONE') return 'NONE / GENERAL ACTION';
+    if (cardId === 'TOKEN') return 'TOKEN';
+    if (cardId === 'OPPONENT') return 'OPPONENT ACTION';
+    return CARD_REGISTRY[cardId]?.name || `Card #${cardId}`;
+  };
+
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       {/* Top Header Bar */}
@@ -363,7 +374,7 @@ export function ComboCreator({
                   <button
                     type="button"
                     onClick={addTag}
-                    className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded text-xs"
+                    className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-350 rounded text-xs"
                   >
                     Add
                   </button>
@@ -481,28 +492,31 @@ export function ComboCreator({
                     />
                   </div>
 
-                  {/* Card Reference Selector */}
-                  <div className="md:col-span-4">
-                    <label className="block text-[10px] font-mono text-zinc-500 uppercase mb-1">Associated Card</label>
-                    <select
-                      value={step.cardId}
-                      onChange={(e) => updateStepField(step.id, 'cardId', e.target.value)}
-                      className="w-full text-xs bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-zinc-200 focus:outline-none focus:border-indigo-500"
-                    >
-                      <option value="NONE">NONE / GENERAL</option>
-                      <option value="TOKEN">TOKEN</option>
-                      <option value="OPPONENT">OPPONENT ACTION</option>
-                      <optgroup label="Main Deck">
-                        {allUniqueDeckCards.filter(c => !c.isExtra).map(c => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </optgroup>
-                      <optgroup label="Extra Deck">
-                        {allUniqueDeckCards.filter(c => c.isExtra).map(c => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </optgroup>
-                    </select>
+                  {/* Card Reference Selector (Visual Overlay Trigger) */}
+                  <div className="md:col-span-4 space-y-1">
+                    <label className="block text-[10px] font-mono text-zinc-500 uppercase">Associated Card</label>
+                    <div className="flex items-center gap-2">
+                      <div 
+                        onClick={() => setPickerStepId(step.id)} 
+                        className="cursor-pointer shrink-0 border border-zinc-800 rounded overflow-hidden hover:border-zinc-700 bg-zinc-900 transition-colors"
+                      >
+                        <CardDisplay
+                          cardId={step.cardId}
+                          size="xs"
+                          onMouseEnter={onCardMouseEnter}
+                          onMouseLeave={onCardMouseLeave}
+                          onMouseMove={onCardMouseMove}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setPickerStepId(step.id)}
+                        className="flex-1 text-left text-xs bg-zinc-900 border border-zinc-850 hover:bg-zinc-800 rounded px-3 py-2.5 text-zinc-300 flex items-center justify-between transition-colors active:scale-[0.98]"
+                      >
+                        <span className="truncate max-w-[120px] font-medium">{getCardName(step.cardId)}</span>
+                        <span className="text-[9px] font-mono text-indigo-400 font-bold uppercase shrink-0">Change</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -679,6 +693,88 @@ export function ComboCreator({
                 ))}
                 {interruptions.length === 0 && (
                   <div className="text-[10px] font-mono text-zinc-600 italic py-2">No interruptions added yet.</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Visual Card Picker Modal (Triggered by Step Associated Card) */}
+      {pickerStepId !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm">
+          <div className="relative w-full max-w-xl max-h-[80vh] mx-4 rounded-xl border border-zinc-800 bg-zinc-950 shadow-2xl flex flex-col overflow-hidden">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-zinc-900 px-5 py-3.5 shrink-0">
+              <h3 className="text-sm font-bold text-zinc-100">Select Associated Card (Step {pickerStepId})</h3>
+              <button 
+                onClick={() => {
+                  setPickerStepId(null);
+                  setPickerSearchQuery('');
+                }} 
+                className="rounded-md p-1.5 text-zinc-500 hover:text-zinc-200 hover:bg-zinc-900 transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Presets Row */}
+            <div className="border-b border-zinc-900 px-5 py-3 flex gap-2 shrink-0 flex-wrap bg-zinc-950/80">
+              {(['NONE', 'TOKEN', 'OPPONENT'] as const).map(preset => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => {
+                    updateStepField(pickerStepId, 'cardId', preset);
+                    setPickerStepId(null);
+                    setPickerSearchQuery('');
+                  }}
+                  className="px-3.5 py-1.5 rounded border border-zinc-800 hover:border-zinc-700 bg-zinc-900/60 hover:bg-zinc-900 text-xs font-mono text-zinc-300 font-semibold transition-all active:scale-[0.97]"
+                >
+                  {preset === 'NONE' ? 'NONE / GENERAL' : preset === 'TOKEN' ? 'TOKEN' : 'OPPONENT ACTION'}
+                </button>
+              ))}
+            </div>
+
+            {/* Search Input */}
+            <div className="border-b border-zinc-900 px-5 py-3 shrink-0">
+              <input
+                type="text"
+                placeholder="Search card in deck by name..."
+                value={pickerSearchQuery}
+                onChange={(e) => setPickerSearchQuery(e.target.value)}
+                className="w-full text-xs bg-zinc-900 border border-zinc-850 rounded px-3 py-2 text-zinc-200 focus:outline-none focus:border-indigo-500 font-sans"
+              />
+            </div>
+
+            {/* Scrollable Card Grid */}
+            <div className="flex-1 overflow-y-auto p-5 bg-zinc-950/60 custom-scrollbar">
+              <div className="grid grid-cols-4 gap-3">
+                {allUniqueDeckCards
+                  .filter(c => c.name.toLowerCase().includes(pickerSearchQuery.toLowerCase()))
+                  .map(card => (
+                    <div
+                      key={card.id}
+                      onClick={() => {
+                        updateStepField(pickerStepId, 'cardId', card.id);
+                        setPickerStepId(null);
+                        setPickerSearchQuery('');
+                      }}
+                      className="cursor-pointer hover:scale-[1.03] active:scale-[0.97] transition-all"
+                    >
+                      <CardDisplay
+                        cardId={card.id}
+                        size="sm"
+                        onMouseEnter={onCardMouseEnter}
+                        onMouseLeave={onCardMouseLeave}
+                        onMouseMove={onCardMouseMove}
+                      />
+                    </div>
+                  ))}
+                {allUniqueDeckCards.filter(c => c.name.toLowerCase().includes(pickerSearchQuery.toLowerCase())).length === 0 && (
+                  <div className="col-span-4 text-center text-xs font-mono text-zinc-600 py-8">
+                    No cards match your search criteria.
+                  </div>
                 )}
               </div>
             </div>
