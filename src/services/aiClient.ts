@@ -35,8 +35,10 @@ export interface AIModelOption {
 export const PROVIDER_MODELS: Record<string, AIModelOption[]> = {
   gemini: [
     { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash (Default)' },
+    { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro (Recommended)' },
     { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
-    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' }
+    { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
+    { id: 'gemini-1.5-pro-latest', name: 'Gemini 1.5 Pro (Latest)' }
   ],
   openai: [
     { id: 'gpt-4o-mini', name: 'GPT-4o Mini (Fast)' },
