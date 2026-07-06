@@ -3,7 +3,7 @@
 import React, { useRef } from 'react';
 import { ComboRoute } from '../types';
 import { CARD_REGISTRY } from '../data/cards';
-import { Play, Tag, Lightbulb, Sparkle, UploadSimple, DownloadSimple } from '@phosphor-icons/react';
+import { Play, Tag, Lightbulb, Sparkle, UploadSimple, DownloadSimple, Plus } from '@phosphor-icons/react';
 
 interface ComboSelectorProps {
   matchingRoutes: ComboRoute[];
@@ -13,6 +13,7 @@ interface ComboSelectorProps {
   hasAiConfig: boolean;
   onExportRoute?: (route: ComboRoute) => void;
   onImportCombo?: (files: File[]) => void;
+  onCreateCombo?: () => void;
   customRouteIds?: Set<string>;
   deckCardIds?: Set<string>;
 }
@@ -25,6 +26,7 @@ export function ComboSelector({
   hasAiConfig,
   onExportRoute,
   onImportCombo,
+  onCreateCombo,
   customRouteIds = new Set(),
   deckCardIds = new Set()
 }: ComboSelectorProps) {
@@ -204,6 +206,24 @@ export function ComboSelector({
             multiple
             className="hidden"
           />
+        </div>
+      )}
+
+      {/* Manual Combo Creator Panel */}
+      {onCreateCombo && (
+        <div className="rounded-xl border border-zinc-900 bg-zinc-950 p-4 flex items-center justify-between gap-4">
+          <div className="space-y-0.5">
+            <h4 className="text-xs font-semibold text-zinc-300">Create Custom Combo</h4>
+            <p className="text-[10px] text-zinc-500">Build your own playbook steps manually.</p>
+          </div>
+          <button
+            type="button"
+            onClick={onCreateCombo}
+            className="flex items-center gap-1.5 rounded-lg border border-zinc-800 hover:border-zinc-700 bg-zinc-900/40 hover:bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-zinc-300 transition-all active:scale-[0.98]"
+          >
+            <Plus size={12} />
+            <span>Create</span>
+          </button>
         </div>
       )}
     </div>

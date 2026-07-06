@@ -9,6 +9,7 @@ import { ComboNavigator } from '../components/ComboNavigator';
 import { SettingsModal } from '../components/SettingsModal';
 import { ComboGenerator } from '../components/ComboGenerator';
 import { HandSelector } from '../components/HandSelector';
+import { ComboCreator } from '../components/ComboCreator';
 import { CardTooltip } from '../components/CardTooltip';
 import { DeckList, ComboRoute, AISettings, ComboStep, ComboHandContext, YGOPROCardDetails } from '../types';
 import { TurnPosition } from '../services/prompts';
@@ -26,8 +27,8 @@ const DEFAULT_SETTINGS: AISettings = {
 };
 
 export default function Home() {
-  // App views: 'import' | 'deck' | 'combo'
-  const [view, setView] = useState<'import' | 'deck' | 'combo'>('import');
+  // App views: 'import' | 'deck' | 'combo' | 'create-combo'
+  const [view, setView] = useState<'import' | 'deck' | 'combo' | 'create-combo'>('import');
   const [deckList, setDeckList] = useState<DeckList | null>(null);
   
   // Custom API Settings
@@ -417,6 +418,7 @@ export default function Home() {
                 hasAiConfig={!settings.useDemo && settings.customApiKey.trim() !== ''}
                 onExportRoute={handleExportCombo}
                 onImportCombo={handleImportCombo}
+                onCreateCombo={() => setView('create-combo')}
                 customRouteIds={new Set(customRoutes.map(r => r.id))}
                 deckCardIds={new Set([...deckList.main, ...deckList.extra, ...deckList.side])}
               />
@@ -443,6 +445,18 @@ export default function Home() {
             onCardMouseEnter={handleCardMouseEnter}
             onCardMouseLeave={handleCardMouseLeave}
             onCardMouseMove={handleCardMouseMove}
+          />
+        )}
+
+        {view === 'create-combo' && deckList && (
+          <ComboCreator
+            deck={deckList}
+            onSave={(newRoute) => {
+              // Add to memory list
+              setCustomRoutes(prev => [newRoute, ...prev]);
+              setView('deck');
+            }}
+            onCancel={() => setView('deck')}
           />
         )}
       </main>

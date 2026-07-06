@@ -1,0 +1,611 @@
+'use client';
+
+import React, { useState, useMemo } from 'react';
+import { DeckList, ComboRoute, ComboStep, ComboResponse, EndBoard } from '../types';
+import { CARD_REGISTRY } from '../data/cards';
+import { X, Plus, Trash, Sparkle, ArrowLeft, FloppyDisk, DownloadSimple } from '@phosphor-icons/react';
+
+interface ComboCreatorProps {
+  deck: DeckList;
+  onSave: (route: ComboRoute) => void;
+  onCancel: () => void;
+}
+
+export function ComboCreator({ deck, onSave, onCancel }: ComboCreatorProps) {
+  const [activeTab, setActiveTab] = useState<'info' | 'steps' | 'endboard'>('info');
+
+  // Basic Info State
+  const [name, setName] = useState('');
+  const [archetype, setArchetype] = useState('');
+  const [description, setDescription] = useState('');
+  const [tags, setTags] = useState<string[]>(['going-first']);
+  const [tagInput, setTagInput] = useState('');
+
+  // Required Starters
+  const [requiredCards, setRequiredCards] = useState<string[]>([]);
+
+  // Steps State
+  const [steps, setSteps] = useState<ComboStep[]>([
+    {
+      id: 1,
+      action: '',
+      cardId: 'NONE',
+      responses: [{ trigger: 'success', next_step: null }]
+    }
+  ]);
+
+  // End Board State
+  const [endBoardMonsters, setEndBoardMonsters] = useState<string[]>([]);
+  const [endBoardSpellsTraps, setEndBoardSpellsTraps] = useState<string[]>([]);
+  const [interruptions, setInterruptions] = useState<string[]>([]);
+  const [interruptionInput, setInterruptionInput] = useState('');
+
+  // Deduplicated deck cards for selections
+  const allUniqueDeckCards = useMemo(() => {
+    const ids = Array.from(new Set([...deck.main, ...deck.extra]));
+    return ids.map(id => ({
+      id,
+      name: CARD_REGISTRY[id]?.name || `Card #${id}`,
+      isExtra: deck.extra.includes(id)
+    }));
+  }, [deck]);
+
+  const addTag = () => {
+    if (tagInput.trim() && !tags.includes(tagInput.trim().toLowerCase())) {
+      setTags([...tags, tagInput.trim().toLowerCase()]);
+      setTagInput('');
+    }
+  };
+
+  const removeTag = (index: number) => {
+    setTags(tags.filter((_, i) => i !== index));
+  };
+
+  const toggleRequiredCard = (cardId: string) => {
+    setRequiredCards(prev => 
+      prev.includes(cardId) ? prev.filter(id => id !== cardId) : [...prev, cardId]
+    );
+  };
+
+  // Step Management
+  const addStep = () => {
+    const nextId = steps.length > 0 ? Math.max(...steps.map(s => s.id)) + 1 : 1;
+    setSteps([
+      ...steps,
+      {
+        id: nextId,
+        action: '',
+        cardId: 'NONE',
+        responses: [{ trigger: 'success', next_step: null }]
+      }
+    ]);
+  };
+
+  const removeStep = (id: number) => {
+    setSteps(steps.filter(s => s.id !== id));
+  };
+
+  const updateStepField = (id: number, field: keyof ComboStep, value: any) => {
+    setSteps(steps.map(s => s.id === id ? { ...s, [field]: value } : s));
+  };
+
+  const addResponse = (stepId: number) => {
+    setSteps(steps.map(s => {
+      if (s.id === stepId) {
+        const currentResponses = s.responses || [];
+        return {
+          ...s,
+          responses: [...currentResponses, { trigger: 'maxx_c', next_step: null }]
+        };
+      }
+      return s;
+    }));
+  };
+
+  const removeResponse = (stepId: number, index: number) => {
+    setSteps(steps.map(s => {
+      if (s.id === stepId && s.responses) {
+        return {
+          ...s,
+          responses: s.responses.filter((_, i) => i !== index)
+        };
+      }
+      return s;
+    }));
+  };
+
+  const updateResponse = (stepId: number, resIndex: number, field: keyof ComboResponse, value: any) => {
+    setSteps(steps.map(s => {
+      if (s.id === stepId && s.responses) {
+        const newResponses = [...s.responses];
+        newResponses[resIndex] = {
+          ...newResponses[resIndex],
+          [field]: value
+        };
+        return { ...s, responses: newResponses };
+      }
+      return s;
+    }));
+  };
+
+  // End Board togglers
+  const toggleEndBoardMonster = (cardId: string) => {
+    setEndBoardMonsters(prev => 
+      prev.includes(cardId) ? prev.filter(id => id !== cardId) : [...prev, cardId]
+    );
+  };
+
+  const toggleEndBoardSpellTrap = (cardId: string) => {
+    setEndBoardSpellsTraps(prev => 
+      prev.includes(cardId) ? prev.filter(id => id !== cardId) : [...prev, cardId]
+    );
+  };
+
+  const addInterruption = () => {
+    if (interruptionInput.trim()) {
+      setInterruptions([...interruptions, interruptionInput.trim()]);
+      setInterruptionInput('');
+    }
+  };
+
+  const removeInterruption = (index: number) => {
+    setInterruptions(interruptions.filter((_, i) => i !== index));
+  };
+
+  const handleExport = () => {
+    const route = buildRouteObject();
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(route, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `${route.id}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
+
+  const buildRouteObject = (): ComboRoute => {
+    return {
+      id: `custom-combo-${Date.now()}`,
+      name: name.trim() || 'Untitled Custom Combo',
+      archetype: archetype.trim() || 'Custom Playbook',
+      description: description.trim() || 'Manually created custom combo playbook.',
+      requiredCards,
+      steps: steps.map(s => ({
+        id: s.id,
+        action: s.action.trim(),
+        cardId: s.cardId,
+        responses: s.responses
+      })),
+      tags,
+      endBoard: {
+        monsters: endBoardMonsters,
+        spellsTraps: endBoardSpellsTraps,
+        interruptions
+      }
+    };
+  };
+
+  const handleSave = () => {
+    if (!name.trim()) {
+      alert('Please provide a name for this custom combo.');
+      return;
+    }
+    const route = buildRouteObject();
+    onSave(route);
+  };
+
+  return (
+    <div className="space-y-6 max-w-4xl mx-auto">
+      {/* Top Header Bar */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-zinc-900 pb-4">
+        <div className="space-y-1">
+          <button
+            onClick={onCancel}
+            className="group flex items-center gap-1 text-xs font-semibold text-zinc-400 hover:text-zinc-200 transition-colors"
+          >
+            <ArrowLeft size={14} className="group-hover:-translate-x-0.5 transition-transform" />
+            <span>Cancel & Back</span>
+          </button>
+          <h2 className="font-sans text-xl font-bold tracking-tight text-zinc-100 mt-1">
+            Manual Combo Builder
+          </h2>
+          <p className="text-xs text-zinc-500 font-mono uppercase tracking-wider">
+            Create custom branching lines & export them to JSON
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-1.5 rounded-lg border border-zinc-800 hover:border-zinc-700 bg-zinc-900/40 hover:bg-zinc-900 px-3.5 py-2 text-xs font-semibold text-zinc-300 transition-all active:scale-[0.98]"
+          >
+            <DownloadSimple size={14} />
+            <span>Export JSON</span>
+          </button>
+          <button
+            onClick={handleSave}
+            className="flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-xs font-semibold text-white transition-all active:scale-[0.98] shadow-md shadow-indigo-600/10"
+          >
+            <FloppyDisk size={14} />
+            <span>Save to Playbook</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex border-b border-zinc-900">
+        {(['info', 'steps', 'endboard'] as const).map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-4 py-2 text-xs font-mono uppercase tracking-wider border-b-2 -mb-[2px] transition-all ${
+              activeTab === tab 
+                ? 'border-indigo-500 text-indigo-400 font-bold' 
+                : 'border-transparent text-zinc-500 hover:text-zinc-300'
+            }`}
+          >
+            {tab === 'info' ? '1. Combo Info & Starters' : tab === 'steps' ? '2. Playbook Steps' : '3. Final End Board'}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab Content 1: Basic Info & Starters */}
+      {activeTab === 'info' && (
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+          <div className="md:col-span-7 space-y-4 rounded-xl border border-zinc-900 bg-zinc-950 p-5">
+            <h3 className="text-xs font-mono uppercase tracking-wider text-zinc-400">Basic Information</h3>
+            
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[10px] font-mono text-zinc-500 uppercase mb-1">Combo Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Wise Strix Extension Route"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="w-full text-xs bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-zinc-200 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-mono text-zinc-500 uppercase mb-1">Archetype</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Raidraptor"
+                  value={archetype}
+                  onChange={(e) => setArchetype(e.target.value)}
+                  className="w-full text-xs bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-zinc-200 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-mono text-zinc-500 uppercase mb-1">Description / Goal</label>
+                <textarea
+                  placeholder="Summarize the ultimate end board or recovery goals of this route..."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={3}
+                  className="w-full text-xs bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-zinc-200 focus:outline-none focus:border-indigo-500 resize-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-mono text-zinc-500 uppercase mb-1">Tags</label>
+                <div className="flex gap-2 mb-2 flex-wrap">
+                  {tags.map((tag, i) => (
+                    <span key={i} className="inline-flex items-center gap-1 text-[9px] font-mono uppercase bg-zinc-900 border border-zinc-850 px-2 py-0.5 rounded text-zinc-400">
+                      {tag}
+                      <button type="button" onClick={() => removeTag(i)} className="hover:text-red-400 text-zinc-600">×</button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Add tag (e.g. otk, defensive)"
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addTag())}
+                    className="flex-1 text-xs bg-zinc-900 border border-zinc-800 rounded px-3 py-1 text-zinc-200 focus:outline-none focus:border-indigo-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={addTag}
+                    className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded text-xs"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Starters Selector */}
+          <div className="md:col-span-5 rounded-xl border border-zinc-900 bg-zinc-950 p-5 space-y-4">
+            <div>
+              <h3 className="text-xs font-mono uppercase tracking-wider text-zinc-400">Required Starters</h3>
+              <p className="text-[10px] text-zinc-500 mt-1">Select the cards that must be in the opening hand to trigger this combo.</p>
+            </div>
+            
+            <div className="max-h-[300px] overflow-y-auto border border-zinc-900 rounded p-2 space-y-1 custom-scrollbar bg-zinc-950/60">
+              {allUniqueDeckCards.filter(c => !c.isExtra).map(card => {
+                const isSelected = requiredCards.includes(card.id);
+                return (
+                  <button
+                    key={card.id}
+                    type="button"
+                    onClick={() => toggleRequiredCard(card.id)}
+                    className={`w-full flex items-center justify-between p-2 rounded text-left text-xs transition-colors ${
+                      isSelected 
+                        ? 'bg-emerald-950/20 hover:bg-emerald-950/30 text-emerald-300 border border-emerald-900/50' 
+                        : 'hover:bg-zinc-905 border border-transparent text-zinc-400'
+                    }`}
+                  >
+                    <span>{card.name}</span>
+                    {isSelected && <span className="text-[9px] font-mono text-emerald-400">Selected</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab Content 2: Steps Editor */}
+      {activeTab === 'steps' && (
+        <div className="space-y-4">
+          <div className="flex justify-between items-center bg-zinc-950 border border-zinc-900 p-4 rounded-xl">
+            <div className="space-y-0.5">
+              <h3 className="text-xs font-mono uppercase tracking-wider text-zinc-400">Playbook Branching Nodes</h3>
+              <p className="text-[10px] text-zinc-500">Each step represents a play. Define fallback triggers pointing to recovery steps.</p>
+            </div>
+            <button
+              onClick={addStep}
+              className="flex items-center gap-1.5 rounded-md bg-indigo-600 hover:bg-indigo-500 px-3 py-1.5 text-xs font-semibold text-white transition-all active:scale-[0.98]"
+            >
+              <Plus size={12} />
+              <span>Add Step</span>
+            </button>
+          </div>
+
+          <div className="space-y-4 max-h-[600px] overflow-y-auto pr-1 custom-scrollbar">
+            {steps.map((step, idx) => (
+              <div key={step.id} className="relative rounded-xl border border-zinc-900 bg-zinc-950 p-4 space-y-4">
+                {/* Step ID Header */}
+                <div className="flex justify-between items-center border-b border-zinc-900 pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 h-5 flex items-center justify-center rounded-full text-[10px] font-mono bg-zinc-900 border border-zinc-800 text-zinc-400">
+                      {step.id}
+                    </span>
+                    <span className="text-xs font-bold text-zinc-200">Play node</span>
+                  </div>
+                  <button
+                    onClick={() => removeStep(step.id)}
+                    className="text-zinc-600 hover:text-red-400 p-1 transition-colors"
+                    title="Delete step node"
+                  >
+                    <Trash size={14} />
+                  </button>
+                </div>
+
+                {/* Grid Fields */}
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                  {/* Action instruction */}
+                  <div className="md:col-span-8">
+                    <label className="block text-[10px] font-mono text-zinc-500 uppercase mb-1">Action Description</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Special Summon Tribute Lanius and activate effect..."
+                      value={step.action}
+                      onChange={(e) => updateStepField(step.id, 'action', e.target.value)}
+                      className="w-full text-xs bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-zinc-200 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+
+                  {/* Card Reference Selector */}
+                  <div className="md:col-span-4">
+                    <label className="block text-[10px] font-mono text-zinc-500 uppercase mb-1">Associated Card</label>
+                    <select
+                      value={step.cardId}
+                      onChange={(e) => updateStepField(step.id, 'cardId', e.target.value)}
+                      className="w-full text-xs bg-zinc-900 border border-zinc-800 rounded px-3 py-2 text-zinc-200 focus:outline-none focus:border-indigo-500"
+                    >
+                      <option value="NONE">NONE / GENERAL</option>
+                      <option value="TOKEN">TOKEN</option>
+                      <option value="OPPONENT">OPPONENT ACTION</option>
+                      <optgroup label="Main Deck">
+                        {allUniqueDeckCards.filter(c => !c.isExtra).map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Extra Deck">
+                        {allUniqueDeckCards.filter(c => c.isExtra).map(c => (
+                          <option key={c.id} value={c.id}>{c.name}</option>
+                        ))}
+                      </optgroup>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Responses & Branching */}
+                <div className="space-y-2 border-t border-zinc-900/60 pt-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-mono text-zinc-500 uppercase">Branching Responses ({step.responses?.length || 0})</span>
+                    <button
+                      type="button"
+                      onClick={() => addResponse(step.id)}
+                      className="text-[10px] font-semibold text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
+                    >
+                      <Plus size={10} /> Add Branch Trigger
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    {step.responses?.map((res, resIdx) => (
+                      <div key={resIdx} className="flex flex-wrap items-center gap-3 bg-zinc-900/40 border border-zinc-900 p-2 rounded">
+                        {/* Trigger Type selection */}
+                        <div className="flex-1 min-w-[120px]">
+                          <select
+                            value={res.trigger}
+                            onChange={(e) => updateResponse(step.id, resIdx, 'trigger', e.target.value)}
+                            className="w-full text-[11px] bg-zinc-900 border border-zinc-850 rounded px-2 py-1 text-zinc-300 focus:outline-none focus:border-indigo-500"
+                          >
+                            <option value="success">Success</option>
+                            <option value="maxx_c">Maxx C</option>
+                            <option value="ash_blossom">Ash Blossom</option>
+                            <option value="nibiru">Nibiru</option>
+                            <option value="imperm_veiler">Imperm / Veiler</option>
+                            <option value="generic_negate">Generic Negate</option>
+                          </select>
+                        </div>
+
+                        {/* Pointer input */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="text-[10px] font-mono text-zinc-500 uppercase">Goes to Step:</span>
+                          <select
+                            value={res.next_step === null ? 'null' : res.next_step}
+                            onChange={(e) => {
+                              const val = e.target.value === 'null' ? null : Number(e.target.value);
+                              updateResponse(step.id, resIdx, 'next_step', val);
+                            }}
+                            className="text-[11px] bg-zinc-900 border border-zinc-850 rounded px-2 py-1 text-zinc-300 focus:outline-none focus:border-indigo-500"
+                          >
+                            <option value="null">End Combo (null)</option>
+                            {steps.map(s => (
+                              <option key={s.id} value={s.id}>Step {s.id}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Trash */}
+                        <button
+                          type="button"
+                          onClick={() => removeResponse(step.id, resIdx)}
+                          className="text-zinc-600 hover:text-red-400 p-1 ml-auto"
+                        >
+                          <Trash size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Tab Content 3: End Board */}
+      {activeTab === 'endboard' && (
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+          {/* Left panel: monsters/spells select */}
+          <div className="md:col-span-7 space-y-6">
+            {/* Monsters Selection */}
+            <div className="rounded-xl border border-zinc-900 bg-zinc-950 p-5 space-y-4">
+              <div>
+                <h3 className="text-xs font-mono uppercase tracking-wider text-zinc-400">Final Monsters Board</h3>
+                <p className="text-[10px] text-zinc-500 mt-1">Select the monsters present on your final field.</p>
+              </div>
+
+              <div className="max-h-[220px] overflow-y-auto border border-zinc-900 rounded p-2 space-y-1 custom-scrollbar bg-zinc-950/60">
+                {allUniqueDeckCards.map(card => {
+                  const isSelected = endBoardMonsters.includes(card.id);
+                  return (
+                    <button
+                      key={card.id}
+                      type="button"
+                      onClick={() => toggleEndBoardMonster(card.id)}
+                      className={`w-full flex items-center justify-between p-2 rounded text-left text-xs transition-colors ${
+                        isSelected 
+                          ? 'bg-indigo-950/20 hover:bg-indigo-950/30 text-indigo-300 border border-indigo-900/50' 
+                          : 'hover:bg-zinc-905 border border-transparent text-zinc-450'
+                      }`}
+                    >
+                      <span>{card.name}</span>
+                      {isSelected && <span className="text-[9px] font-mono text-indigo-400">Monst</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Spells/Traps Selection */}
+            <div className="rounded-xl border border-zinc-900 bg-zinc-950 p-5 space-y-4">
+              <div>
+                <h3 className="text-xs font-mono uppercase tracking-wider text-zinc-400">Final Spells & Traps Board</h3>
+                <p className="text-[10px] text-zinc-500 mt-1">Select backrow cards or field spells active on your final board.</p>
+              </div>
+
+              <div className="max-h-[220px] overflow-y-auto border border-zinc-900 rounded p-2 space-y-1 custom-scrollbar bg-zinc-950/60">
+                {allUniqueDeckCards.filter(c => !c.isExtra).map(card => {
+                  const isSelected = endBoardSpellsTraps.includes(card.id);
+                  return (
+                    <button
+                      key={card.id}
+                      type="button"
+                      onClick={() => toggleEndBoardSpellTrap(card.id)}
+                      className={`w-full flex items-center justify-between p-2 rounded text-left text-xs transition-colors ${
+                        isSelected 
+                          ? 'bg-violet-950/20 hover:bg-violet-950/30 text-violet-300 border border-violet-900/50' 
+                          : 'hover:bg-zinc-905 border border-transparent text-zinc-455'
+                      }`}
+                    >
+                      <span>{card.name}</span>
+                      {isSelected && <span className="text-[9px] font-mono text-violet-400">Set S/T</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Right panel: text interruptions */}
+          <div className="md:col-span-5 rounded-xl border border-zinc-900 bg-zinc-950 p-5 space-y-4 h-fit">
+            <div>
+              <h3 className="text-xs font-mono uppercase tracking-wider text-zinc-400">Target Interruptions</h3>
+              <p className="text-[10px] text-zinc-500 mt-1">Summarize raw negation capability (e.g. 1 Omni-Negate, 1 GY Banish).</p>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="e.g. 1 Spell Negate"
+                  value={interruptionInput}
+                  onChange={(e) => setInterruptionInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addInterruption())}
+                  className="flex-1 text-xs bg-zinc-900 border border-zinc-800 rounded px-3 py-1.5 text-zinc-200 focus:outline-none focus:border-indigo-500"
+                />
+                <button
+                  type="button"
+                  onClick={addInterruption}
+                  className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-350 rounded text-xs font-semibold"
+                >
+                  Add
+                </button>
+              </div>
+
+              <div className="space-y-1.5 max-h-[200px] overflow-y-auto custom-scrollbar">
+                {interruptions.map((item, index) => (
+                  <div key={index} className="flex items-center justify-between p-2 rounded bg-zinc-900 border border-zinc-850 text-xs text-zinc-300">
+                    <span>{item}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeInterruption(index)}
+                      className="text-zinc-500 hover:text-red-400"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                {interruptions.length === 0 && (
+                  <div className="text-[10px] font-mono text-zinc-600 italic py-2">No interruptions added yet.</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
