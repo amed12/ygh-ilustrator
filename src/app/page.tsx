@@ -447,6 +447,11 @@ export default function Home() {
           isOpen={isHandSelectorOpen}
           onClose={() => setIsHandSelectorOpen(false)}
           onConfirm={handleGenerateAI}
+          availableRoutes={getMatchingCombos()}
+          onSelectCombo={(route) => {
+            setIsHandSelectorOpen(false);
+            handleStartCombo(route);
+          }}
           isGenerating={isAiGenerating}
           onCardMouseEnter={handleCardMouseEnter}
           onCardMouseLeave={handleCardMouseLeave}

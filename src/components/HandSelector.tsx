@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { CardDisplay } from './CardDisplay';
-import { DeckList } from '../types';
+import { DeckList, ComboRoute } from '../types';
 import { TurnPosition } from '../services/prompts';
 import { CARD_REGISTRY } from '../data/cards';
 import { X, Shuffle, Sparkle, SunHorizon, MoonStars, Hand } from '@phosphor-icons/react';
@@ -12,6 +12,8 @@ interface HandSelectorProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: (handCards: string[], turnPosition: TurnPosition) => void;
+  availableRoutes: ComboRoute[];
+  onSelectCombo: (route: ComboRoute) => void;
   isGenerating: boolean;
   onCardMouseEnter?: (cardId: string, e: React.MouseEvent) => void;
   onCardMouseLeave?: () => void;
@@ -23,6 +25,8 @@ export function HandSelector({
   isOpen,
   onClose,
   onConfirm,
+  availableRoutes,
+  onSelectCombo,
   isGenerating,
   onCardMouseEnter,
   onCardMouseLeave,
@@ -83,6 +87,26 @@ export function HandSelector({
   const getSelectedCount = (cardId: string) => {
     return selectedCards.filter(id => id === cardId).length;
   };
+
+  // Find combos whose required cards are a subset of the selected hand
+  const validCombos = useMemo(() => {
+    if (selectedCards.length === 0) return [];
+    
+    const handCounts = new Map<string, number>();
+    selectedCards.forEach(id => handCounts.set(id, (handCounts.get(id) || 0) + 1));
+
+    return availableRoutes.filter(route => {
+      if (route.requiredCards.length === 0) return false; // empty requirements don't match
+      
+      const reqCounts = new Map<string, number>();
+      route.requiredCards.forEach(id => reqCounts.set(id, (reqCounts.get(id) || 0) + 1));
+      
+      for (const [id, reqCount] of reqCounts.entries()) {
+        if ((handCounts.get(id) || 0) < reqCount) return false;
+      }
+      return true;
+    });
+  }, [selectedCards, availableRoutes]);
 
   if (!isOpen) return null;
 
@@ -260,6 +284,28 @@ export function HandSelector({
             })}
           </div>
         </div>
+
+        {/* Valid Combos Section */}
+        {validCombos.length > 0 && (
+          <div className="border-t border-zinc-900 bg-emerald-950/10 px-6 py-4 shrink-0">
+            <p className="text-[10px] font-mono text-emerald-500 uppercase tracking-wider mb-3 font-bold">
+              {validCombos.length} Matching Combo{validCombos.length !== 1 ? 's' : ''} Available for this Hand
+            </p>
+            <div className="flex gap-3 overflow-x-auto custom-scrollbar pb-2">
+              {validCombos.map(combo => (
+                <button
+                  key={combo.id}
+                  onClick={() => onSelectCombo(combo)}
+                  className="shrink-0 group flex flex-col text-left p-3 rounded-lg border border-emerald-900/50 bg-emerald-950/20 hover:bg-emerald-950/40 hover:border-emerald-700 transition-all active:scale-[0.98] w-64"
+                >
+                  <span className="text-[10px] font-mono text-emerald-400 mb-1 line-clamp-1">{combo.archetype}</span>
+                  <span className="text-sm font-bold text-zinc-200 line-clamp-1 group-hover:text-white">{combo.name}</span>
+                  <span className="text-[10px] text-zinc-400 mt-1 line-clamp-2 leading-snug">{combo.description}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Footer — Generate Button */}
         <div className="border-t border-zinc-900 px-6 py-4 flex items-center justify-between shrink-0">
