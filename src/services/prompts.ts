@@ -1,114 +1,196 @@
-import { DeckList } from '../types';
+import { DeckList, YGOPROCardDetails } from '../types';
 
 export type TurnPosition = 'going-first' | 'going-second';
 
 /**
- * Builds a strict, structured prompt template for LLMs to generate Yu-Gi-Oh combos.
- * Ensures the response matches our types.ts schema exactly and avoids card hallucinations.
+ * Formats a single card's full data into a concise block for the AI prompt.
+ * Sends type, stats, and full effect text so the AI can reason about card interactions.
+ */
+function formatCardBlock(id: string, details: YGOPROCardDetails | undefined, isCritical: boolean): string {
+  if (!details) return `  - ID: ${id} | [Unknown Card — no data]`;
+
+  const stats: string[] = [];
+  if (details.level) stats.push(`Lv${details.level}`);
+  if (details.atk !== undefined) stats.push(`ATK ${details.atk}`);
+  if (details.def !== undefined) stats.push(`DEF ${details.def}`);
+  if (details.attribute) stats.push(details.attribute);
+  if (details.race) stats.push(details.race);
+
+  const statLine = stats.length > 0 ? ` | ${stats.join(' / ')}` : '';
+  const typeLine = details.type ? ` | ${details.type}` : '';
+
+  // For critical cards (hand + Extra Deck), send full effect.
+  // For main deck non-hand cards, send first sentence only to save tokens.
+  let effectLine = '';
+  if (details.desc) {
+    if (isCritical) {
+      effectLine = `\n    EFFECT: "${details.desc}"`;
+    } else {
+      const firstSentence = details.desc.split(/\.\s/)[0].slice(0, 200);
+      effectLine = `\n    EFFECT (summary): "${firstSentence}..."`;
+    }
+  }
+
+  return `  - ID: ${id} | ${details.name}${typeLine}${statLine}${effectLine}`;
+}
+
+/**
+ * Builds a high-intelligence prompt for LLMs to generate Yu-Gi-Oh combos.
+ * Sends full card effects for hand cards + Extra Deck, summary effects for main deck.
+ * Includes strategic analysis, side deck strategy, and strict end board crafting requirements.
  *
- * @param deckList     - The full imported deck list (main/extra/side).
- * @param cardNames    - Resolved card name map (passcode → name).
- * @param handCards    - Card IDs the player currently has in hand (no upper limit).
- * @param turnPosition - Whether the player is going first or second.
+ * @param deckList       - The full imported deck list (main/extra/side).
+ * @param cardNames      - Resolved card name map (passcode → name). Used as fallback.
+ * @param handCards      - Card IDs the player currently has in hand.
+ * @param turnPosition   - Whether the player is going first or second.
+ * @param cardDetails    - Full card data from YGOPRODECK API (includes effect text, types, stats).
  */
 export function buildComboPrompt(
   deckList: DeckList,
   cardNames: Record<string, string>,
   handCards: string[],
-  turnPosition: TurnPosition
+  turnPosition: TurnPosition,
+  cardDetails: Record<string, YGOPROCardDetails> = {}
 ): string {
-  // Format deck list for prompt
-  const mainCards = deckList.main.map(id => `- ID: ${id} (${cardNames[id] || 'Unknown Card'})`).join('\n');
-  const extraCards = deckList.extra.map(id => `- ID: ${id} (${cardNames[id] || 'Unknown Card'})`).join('\n');
+  const handSet = new Set(handCards);
 
-  // Format hand cards
-  const handCardsList = handCards
-    .map(id => `- ID: ${id} (${cardNames[id] || 'Unknown Card'})`)
-    .join('\n');
+  // ── OPENING HAND (FULL EFFECT — most critical) ────────────────────────────
+  const handSection = handCards.map(id =>
+    formatCardBlock(id, cardDetails[id], true)
+  ).join('\n');
 
-  const deckListJSON = JSON.stringify({
-    mainCount: deckList.main.length,
-    extraCount: deckList.extra.length,
-    mainDeckIds: deckList.main,
-    extraDeckIds: deckList.extra
-  }, null, 2);
+  // ── EXTRA DECK (FULL EFFECT — needed to plan end board) ────────────────────
+  const extraSection = deckList.extra.map(id =>
+    formatCardBlock(id, cardDetails[id], true)
+  ).join('\n');
 
+  // ── MAIN DECK (EFFECT SUMMARY — context, not in hand) ─────────────────────
+  const mainDeckOthers = deckList.main.filter(id => !handSet.has(id));
+  const mainSection = mainDeckOthers.map(id =>
+    formatCardBlock(id, cardDetails[id], false)
+  ).join('\n');
+
+  // ── SIDE DECK (FULL EFFECT — game 2/3 strategy) ───────────────────────────
+  const sideSection = deckList.side.length > 0
+    ? deckList.side.map(id => formatCardBlock(id, cardDetails[id], true)).join('\n')
+    : '  (No side deck cards)';
+
+  // ── TURN POSITION CONTEXT ─────────────────────────────────────────────────
   const turnContext = turnPosition === 'going-first'
-    ? `The player is GOING FIRST. There is no Battle Phase this turn. The goal is to build the strongest possible end board with negates, floodgates, and/or interruptions before passing turn. Do NOT include attacks or battle damage steps.`
-    : `The player is GOING SECOND. The opponent already has an established board. The goal is to break the opponent's board and push for an OTK (One Turn Kill) if possible, or at minimum clear threats and establish advantage. Include Battle Phase attacks if the combo leads to lethal damage.`;
+    ? `GOING FIRST — No Battle Phase this turn.
+STRATEGIC OBJECTIVE: Build the most oppressive end board possible using ALL available hand cards without wasting any single card.
+  - Identify which Extra Deck monsters provide Omni-Negates, targeted negates, floodgates, or protection.
+  - Prioritize stacking multiple interaction layers: ideally 2+ hard negates + 1 floodgate or 2+ bodies with disrupt effects.
+  - Every card in hand MUST be used in the combo — do not leave cards stranded.
+  - End board MUST specify each monster/trap on field and EXACTLY what it negates or prevents.`
+    : `GOING SECOND — Opponent has an established board.
+STRATEGIC OBJECTIVE: Break the opponent's board, establish advantage, and push for OTK if ATK values allow.
+  - Identify board-breaking tools in the hand (e.g. spells that destroy/banish, monsters with on-summon removal).
+  - Calculate total ATK on field after board break to determine if OTK is achievable.
+  - If OTK is not possible, prioritize establishing a defensive end board for the following turn.
+  - Every card in hand MUST be used — no idle cards.`;
 
-  return `You are an expert competitive Yu-Gi-Oh! TCG / Master Duel deck analyst and professional combo designer.
+  // ── SIDE DECK STRATEGY CONTEXT ────────────────────────────────────────────
+  const sideDeckStrategy = deckList.side.length > 0
+    ? `SIDE DECK STRATEGY (Game 2 / Game 3):
+After game 1, you may side in cards from the Side Deck to counter the opponent's strategy.
+Analyze the side deck cards above and in the \"tags\" field include \"side-in\" tags if this combo benefits from:
+  - Anti-meta floodgates (e.g., Dimensional Barrier, There Can Be Only One)
+  - Board wipe hand traps (e.g., Droll & Lock Bird vs combo decks)
+  - Searchable power cards that improve specific matchups
+Include in the combo description a note on which side deck cards could replace/augment specific steps in game 2/3.`
+    : `SIDE DECK STRATEGY: No side deck provided. Skip side strategy analysis.`;
 
-The player has drawn their opening hand and needs an optimal combo route. Analyze the hand cards and the full deck context to generate the best possible play sequence.
+  return `You are an elite-level competitive Yu-Gi-Oh! TCG / Master Duel deck analyst and professional combo architect.
+Your job is to generate a complete, deeply-analyzed combo route with a fully-crafted end board.
 
-TURN POSITION:
+═══════════════════════════════════════════════════════
+MISSION CRITICAL REQUIREMENTS (READ BEFORE ALL ELSE):
+═══════════════════════════════════════════════════════
+1. READ EVERY CARD EFFECT below before generating anything. Do not rely on general knowledge — base all reasoning on the exact effect text provided.
+2. ALL HAND CARDS MUST BE USED. Every card in the opening hand must appear in the steps. Zero waste.
+3. END BOARD MUST BE FULLY CRAFTED. Specify every monster and spell/trap on the field at the end, and EXACTLY what interruption each one provides (negate type, destruction, banish, etc).
+4. INTERRUPTIONS MUST BE SPECIFIC. Not "1 negate" — write "Raidraptor - Ultimate Falcon (unaffected by opponent's card effects, reduces all opponent monster ATK to 0 during opponent's turn)".
+5. BRANCHING FOR HAND TRAPS. Provide fallback branches for Ash Blossom, Maxx "C", Nibiru, and Impermanence on every key Special Summon.
+
+════════════════════════════════════════
+TURN POSITION & STRATEGIC OBJECTIVE:
+════════════════════════════════════════
 ${turnContext}
 
-OPENING HAND (${handCards.length} cards):
-${handCardsList}
+════════════════════════════════════════
+${sideDeckStrategy}
+════════════════════════════════════════
 
-CRITICAL HAND RULES:
-1. The combo MUST begin from the cards in the OPENING HAND above. Step 1 must use a hand card.
-2. You may reference Extra Deck cards for Synchro/XYZ/Link/Fusion summons during the combo.
-3. The "requiredCards" field must ONLY contain card IDs from the opening hand that are essential starters for this combo.
-4. The hand may contain more than 5 cards (e.g. from Maxx "C"). Use ALL relevant hand cards.
+════════════════════════════
+OPENING HAND (${handCards.length} cards) — FULL CARD EFFECTS:
+════════════════════════════
+${handSection}
 
-STRICT DESIGN RULES (CRITICAL):
-1. NO CARD HALLUCINATION: You may ONLY use cards that exist in the provided mainDeckIds and extraDeckIds.
-2. NON-DECK CARDS: If a step involves a Token, an opponent's card (e.g., Nibiru), or a generic action, set cardId to "TOKEN", "OPPONENT", or "NONE".
-3. BRANCHING & FALLBACKS: Yu-Gi-Oh is highly interactive. Do NOT just provide a single linear success path. You MUST provide alternative branches using the "responses" array for EACH step if applicable.
-   - Triggers can be: "success", "ash_blossom", "imperm_veiler", "nibiru", "maxx_c", "generic_negate".
-   - "next_step: null" indicates the combo ends there.
-4. THE MAXX "C" CHALLENGE: If going first, you MUST provide an explicit early fallback path if 'Maxx C' is activated in response to the first Special Summon. This route should minimize opponent draws while establishing a minimal interruption (e.g., Rank 4 Bagooska or a set trap). Use trigger "maxx_c".
-5. STATE MUTATIONS: For each step, track virtual state changes. If you discard a card from hand, list it in stateMutations.hand.remove and gy.add.
-6. END BOARD: Summarize the final board state in the "endBoard" object.
-7. IDs: Ensure all step IDs are unique 1-indexed integers. No broken pointers.
+════════════════════════════
+EXTRA DECK (${deckList.extra.length} cards) — FULL CARD EFFECTS (plan your end board from these):
+════════════════════════════
+${extraSection}
 
-DECK LIST:
----
-MAIN DECK CARDS:
-${mainCards}
+════════════════════════════
+MAIN DECK (${mainDeckOthers.length} remaining cards — not in hand):
+════════════════════════════
+${mainSection}
 
-EXTRA DECK CARDS:
-${extraCards}
+════════════════════════════
+SIDE DECK (${deckList.side.length} cards) — for game 2/3 analysis:
+════════════════════════════
+${sideSection}
 
-RAW DATA:
-${deckListJSON}
----
+═══════════════════════════════════
+STRICT DESIGN RULES:
+═══════════════════════════════════
+1. NO HALLUCINATION: Only use card IDs that appear in the deck lists above.
+2. NON-DECK CARDS: For tokens, set cardId to "TOKEN". For opponent's cards (e.g. Nibiru), use "OPPONENT". For generic actions, use "NONE".
+3. BRANCHING: Every step that involves a Special Summon MUST have response branches: "success", "ash_blossom" (or "imperm_veiler"), "nibiru" (after 5th summon), "maxx_c", and "generic_negate" where applicable.
+4. MAXX "C" EMERGENCY LINE: If going first, provide a fallback path triggered by "maxx_c" on the first Special Summon that establishes at least 1 disruption while minimizing further special summons.
+5. STATE MUTATIONS: For every step, track hand/field/GY/banished changes in stateMutations. Accuracy is required.
+6. STEP IDs: Must be unique 1-indexed integers. No broken pointers. Last step in each branch must have next_step: null.
+7. ALL REQUIRED CARDS: The "requiredCards" array must list ONLY the card IDs from the opening hand that are essential starters.
 
+═══════════════════════════════════
 OUTPUT FORMAT:
-You must respond with ONLY a valid, raw JSON object matching the schema below. No markdown wrappers, no backticks, no explanatory text.
+═══════════════════════════════════
+Respond with ONLY a valid raw JSON object. No markdown, no backticks, no explanation.
 
 JSON SCHEMA:
 {
-  "id": "string (unique string id, e.g. 'combo-wise-strix-opening')",
-  "name": "string (descriptive name of the combo, max 45 chars)",
-  "archetype": "string (primary archetype)",
-  "description": "string (1-2 sentence description explaining the end board or goal)",
-  "requiredCards": ["string"], // ONLY card IDs from the opening hand that are essential starters
+  "id": "string (unique id, e.g. 'combo-rr-ultimate-falcon-line')",
+  "name": "string (descriptive name, max 50 chars)",
+  "archetype": "string (primary archetype of this deck)",
+  "description": "string (2-3 sentences: what the combo achieves, what cards are used, what the end board does)",
+  "requiredCards": ["string (card IDs from opening hand that are essential starters)"],
   "endBoard": {
-    "monsters": ["string (card IDs)"],
-    "spellsTraps": ["string (card IDs)"],
-    "interruptions": ["string (human-readable, e.g. '1 Omni-Negate', '1 GY Banish')"]
+    "monsters": ["string (card ID of each monster on field at end)"],
+    "spellsTraps": ["string (card ID of each set/active spell or trap at end)"],
+    "interruptions": [
+      "string (specific disruption — card name + exactly what it does, e.g. 'Raidraptor - Ultimate Falcon: unaffected by card effects, reduces all opponent monster ATK to 0 in opponent turn')"
+    ]
   },
   "steps": [
     {
       "id": 1,
-      "action": "string (human-readable step action instruction)",
-      "cardId": "string (the card passcode/id involved)",
+      "action": "string (clear human-readable instruction for this step)",
+      "cardId": "string (passcode of the card acting)",
       "responses": [
         { "trigger": "success", "next_step": 2 },
-        { "trigger": "ash_blossom", "next_step": 10 },
-        { "trigger": "maxx_c", "next_step": 11 }
+        { "trigger": "ash_blossom", "next_step": 20 },
+        { "trigger": "maxx_c", "next_step": 30 },
+        { "trigger": "nibiru", "next_step": 40 }
       ],
       "stateMutations": {
-        "hand": { "add": ["id"], "remove": ["id"] },
-        "field": { "add": ["id"], "remove": ["id"] },
-        "gy": { "add": ["id"], "remove": ["id"] },
-        "banished": { "add": ["id"], "remove": ["id"] }
+        "hand": { "add": [], "remove": ["card_id_used"] },
+        "field": { "add": ["card_id_summoned"], "remove": [] },
+        "gy": { "add": [], "remove": [] },
+        "banished": { "add": [], "remove": [] }
       }
     }
   ],
-  "tags": ["${turnPosition}" | "otk" | "grind" | "defensive"]
+  "tags": ["going-first" | "going-second" | "otk" | "grind" | "defensive" | "side-in"]
 }`;
 }

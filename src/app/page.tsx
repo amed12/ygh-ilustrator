@@ -250,7 +250,7 @@ export default function Home() {
 
     try {
       const cardNames = await getCardNamesForDeck(deckList);
-      const generated = await generateAICombo(deckList, cardNames, settings, handCards, turnPosition);
+      const generated = await generateAICombo(deckList, cardNames, settings, handCards, turnPosition, cardDetails);
       
       // Store hand context
       const newContext: ComboHandContext = {

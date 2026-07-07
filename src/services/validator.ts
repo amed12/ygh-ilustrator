@@ -44,12 +44,31 @@ export function validateComboRoute(raw: unknown, deckList: DeckList): Validation
     errors.push('tags must be an array.');
   }
 
-  // EndBoard Validation
-  if (data.endBoard && typeof data.endBoard === 'object') {
+  // EndBoard Validation — required and must be non-trivially specified
+  if (!data.endBoard || typeof data.endBoard !== 'object') {
+    errors.push('endBoard is required. The AI must specify the full final board state.');
+  } else {
     const eb = data.endBoard as Record<string, unknown>;
-    if (!Array.isArray(eb.monsters)) errors.push('endBoard.monsters must be an array.');
-    if (!Array.isArray(eb.spellsTraps)) errors.push('endBoard.spellsTraps must be an array.');
-    if (!Array.isArray(eb.interruptions)) errors.push('endBoard.interruptions must be an array.');
+    if (!Array.isArray(eb.monsters)) {
+      errors.push('endBoard.monsters must be an array.');
+    }
+    if (!Array.isArray(eb.spellsTraps)) {
+      errors.push('endBoard.spellsTraps must be an array.');
+    }
+    if (!Array.isArray(eb.interruptions)) {
+      errors.push('endBoard.interruptions must be an array.');
+    } else {
+      const interruptions = eb.interruptions as unknown[];
+      if (interruptions.length === 0) {
+        errors.push('endBoard.interruptions must not be empty — list at least 1 specific disruption effect.');
+      }
+      // Warn if interruptions are too vague (less than 15 chars suggests generic placeholders)
+      interruptions.forEach((intr, i) => {
+        if (typeof intr === 'string' && intr.length < 15) {
+          errors.push(`endBoard.interruptions[${i}] is too vague: "${intr}". Must describe the specific card name and what it negates/prevents.`);
+        }
+      });
+    }
   }
 
   const stepsList = data.steps as Record<string, unknown>[];
@@ -115,13 +134,32 @@ export function validateComboRoute(raw: unknown, deckList: DeckList): Validation
       }
     }
 
-    // Simple parsing of state mutations without strict schema block
-    const verifiedMutations = rawStep.stateMutations as any || {
+    // Parse state mutations with typed fallback (no `any`)
+    type ZoneMutation = { add: string[]; remove: string[] };
+    type StateMutationMap = { hand: ZoneMutation; field: ZoneMutation; gy: ZoneMutation; banished: ZoneMutation };
+    const emptyMutation = (): ZoneMutation => ({ add: [], remove: [] });
+    const rawMut = rawStep.stateMutations;
+    const verifiedMutations: StateMutationMap = {
       hand: { add: [], remove: [] },
       field: { add: [], remove: [] },
       gy: { add: [], remove: [] },
       banished: { add: [], remove: [] }
     };
+    if (rawMut && typeof rawMut === 'object') {
+      const m = rawMut as Record<string, unknown>;
+      const parseZone = (z: unknown): ZoneMutation => {
+        if (!z || typeof z !== 'object') return emptyMutation();
+        const zone = z as Record<string, unknown>;
+        return {
+          add: Array.isArray(zone.add) ? zone.add.map(String) : [],
+          remove: Array.isArray(zone.remove) ? zone.remove.map(String) : []
+        };
+      };
+      verifiedMutations.hand = parseZone(m.hand);
+      verifiedMutations.field = parseZone(m.field);
+      verifiedMutations.gy = parseZone(m.gy);
+      verifiedMutations.banished = parseZone(m.banished);
+    }
     
     verifiedSteps.push({
       id: rawStep.id,
@@ -188,7 +226,7 @@ export function validateComboRoute(raw: unknown, deckList: DeckList): Validation
       requiredCards: (data.requiredCards as string[]).map(String),
       steps: verifiedSteps,
       tags: (data.tags as string[] || []).map(String),
-      endBoard: data.endBoard as any
+      endBoard: data.endBoard as { monsters: string[]; spellsTraps: string[]; interruptions: string[] }
     },
     errors: []
   };
