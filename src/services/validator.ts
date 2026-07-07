@@ -170,12 +170,17 @@ export function validateComboRoute(raw: unknown, deckList: DeckList): Validation
     });
   }
 
-  // Step 2: Validate pointers
+  // Step 2: Auto-repair broken pointers — nullify next_step if it references a non-existent ID.
+  // This prevents hard-fail when AI generates placeholder IDs (e.g., 20, 30, 40) that don't exist.
+  // We degrade gracefully: the branch simply ends at null rather than crashing the whole combo.
+  let repairedPointers = 0;
   for (const step of verifiedSteps) {
     if (step.responses) {
       for (const res of step.responses) {
         if (res.next_step !== null && !stepIds.has(res.next_step)) {
-          errors.push(`Step ID ${step.id}: response points to non-existent step ID ${res.next_step}.`);
+          // Auto-repair: treat as end-of-branch (null) instead of erroring
+          res.next_step = null;
+          repairedPointers++;
         }
       }
     }

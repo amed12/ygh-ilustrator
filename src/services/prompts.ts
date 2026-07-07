@@ -158,6 +158,23 @@ OUTPUT FORMAT:
 ═══════════════════════════════════
 Respond with ONLY a valid raw JSON object. No markdown, no backticks, no explanation.
 
+CRITICAL STEP ID RULES — VIOLATING THESE MAKES THE OUTPUT INVALID:
+- All step IDs MUST be sequential integers: 1, 2, 3, 4 ... up to N.
+- EVERY "next_step" value MUST reference an ID that actually exists in your steps array.
+- Fallback branches (ash_blossom, maxx_c, nibiru) MUST point to a real step ID you define.
+  * If a fallback ends the combo immediately: use "next_step": null.
+  * If a fallback diverges into a shorter line: define those steps with their own IDs and include them in the steps array.
+- NEVER reference a step ID in "next_step" unless that ID appears as "id" somewhere in the steps array.
+- The main success path uses IDs 1, 2, 3 ... N. Fallback paths start from N+1 and continue sequentially.
+
+EXAMPLE of correct branching (main path = steps 1-3, Maxx C fallback = steps 4-5):
+  Step 1 responses: [{"trigger":"success","next_step":2},{"trigger":"maxx_c","next_step":4}]
+  Step 2 responses: [{"trigger":"success","next_step":3}]
+  Step 3 responses: [{"trigger":"success","next_step":null}]   <- end of main path
+  Step 4 responses: [{"trigger":"success","next_step":5}]
+  Step 5 responses: [{"trigger":"success","next_step":null}]   <- end of Maxx C fallback
+All five step IDs (1,2,3,4,5) MUST be present in the steps array.
+
 JSON SCHEMA:
 {
   "id": "string (unique id, e.g. 'combo-rr-ultimate-falcon-line')",
@@ -179,9 +196,7 @@ JSON SCHEMA:
       "cardId": "string (passcode of the card acting)",
       "responses": [
         { "trigger": "success", "next_step": 2 },
-        { "trigger": "ash_blossom", "next_step": 20 },
-        { "trigger": "maxx_c", "next_step": 30 },
-        { "trigger": "nibiru", "next_step": 40 }
+        { "trigger": "maxx_c", "next_step": 4 }
       ],
       "stateMutations": {
         "hand": { "add": [], "remove": ["card_id_used"] },
@@ -194,3 +209,4 @@ JSON SCHEMA:
   "tags": ["going-first" | "going-second" | "otk" | "grind" | "defensive" | "side-in"]
 }`;
 }
+
