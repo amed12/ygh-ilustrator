@@ -19,6 +19,7 @@ interface ComboNavigatorProps {
   onBackToDeck: () => void;
   handContext?: ComboHandContext;
   onExport?: () => void;
+  onStepClick?: (historyIndex: number) => void;
   onCardMouseEnter?: (cardId: string, e: React.MouseEvent) => void;
   onCardMouseLeave?: () => void;
   onCardMouseMove?: (e: React.MouseEvent) => void;
@@ -35,6 +36,7 @@ export function ComboNavigator({
   onBackToDeck,
   handContext,
   onExport,
+  onStepClick,
   onCardMouseEnter,
   onCardMouseLeave,
   onCardMouseMove
@@ -103,7 +105,7 @@ export function ComboNavigator({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Column: Timeline (Col 3) */}
         <div className="lg:col-span-3 space-y-4">
-          <StepTimeline history={history} currentStep={currentStep} />
+          <StepTimeline history={history} currentStep={currentStep} onStepClick={onStepClick} />
           <OpeningHandPanel 
             handContext={handContext} 
             onCardMouseEnter={onCardMouseEnter}

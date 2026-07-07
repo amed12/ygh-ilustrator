@@ -184,6 +184,17 @@ export default function Home() {
     setCurrentStepId(nextId);
   };
 
+  // Rollback state machine to a previous step in history
+  const handleStepClick = (historyIndex: number) => {
+    if (!selectedRoute) return;
+    const clickedItem = comboHistory[historyIndex];
+    if (!clickedItem) return;
+
+    const newHistory = comboHistory.slice(0, historyIndex);
+    setComboHistory(newHistory);
+    setCurrentStepId(clickedItem.step.id);
+  };
+
   // Reset active practice
   const handleResetCombo = () => {
     if (selectedRoute && selectedRoute.steps.length > 0) {
@@ -462,6 +473,7 @@ export default function Home() {
             progress={getProgress()}
             onAdvance={handleAdvanceCombo}
             onReset={handleResetCombo}
+            onStepClick={handleStepClick}
             onBackToDeck={() => setView('deck')}
             handContext={handContexts[selectedRoute.id]}
             onExport={

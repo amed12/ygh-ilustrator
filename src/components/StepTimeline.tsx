@@ -6,9 +6,10 @@ import { ComboStep } from '../types';
 interface StepTimelineProps {
   history: { step: ComboStep; trigger: string }[];
   currentStep: ComboStep | null;
+  onStepClick?: (historyIndex: number) => void;
 }
 
-export function StepTimeline({ history, currentStep }: StepTimelineProps) {
+export function StepTimeline({ history, currentStep, onStepClick }: StepTimelineProps) {
   
   const renderMutations = (step: ComboStep) => {
     if (!step.stateMutations) return null;
@@ -40,10 +41,15 @@ export function StepTimeline({ history, currentStep }: StepTimelineProps) {
 
   return (
     <div className="rounded-xl border border-zinc-900 bg-zinc-950 p-4 space-y-4 max-h-[500px] overflow-y-auto custom-scrollbar">
-      <div>
+      <div className="flex items-center justify-between">
         <h4 className="text-xs font-mono uppercase tracking-wider text-zinc-500">
           Step Execution History
         </h4>
+        {history.length > 0 && (
+          <span className="text-[9px] font-mono text-zinc-500 uppercase tracking-widest bg-zinc-900 border border-zinc-800 px-1.5 py-0.5 rounded">
+            Click step to undo
+          </span>
+        )}
       </div>
 
       <div className="relative pl-4 space-y-4 before:absolute before:inset-y-1 before:left-1.5 before:w-0.5 before:bg-zinc-900">
@@ -51,9 +57,14 @@ export function StepTimeline({ history, currentStep }: StepTimelineProps) {
         {history.map((item, index) => {
           const isSuccess = item.trigger === 'success';
           return (
-            <div key={`${item.step.id}-${index}`} className="relative flex gap-3 text-xs leading-normal">
+            <div 
+              key={`${item.step.id}-${index}`} 
+              onClick={() => onStepClick && onStepClick(index)}
+              className="relative flex gap-3 text-xs leading-normal cursor-pointer hover:bg-zinc-900/60 p-2 -mx-2 rounded-lg transition-all active:scale-[0.98] group"
+              title="Click to roll back to this step"
+            >
               {/* Timeline marker node */}
-              <span className={`absolute -left-4 mt-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full border bg-zinc-950 ${
+              <span className={`absolute left-0 mt-2 flex h-3.5 w-3.5 items-center justify-center rounded-full border bg-zinc-950 -translate-x-1/2 group-hover:scale-115 transition-transform ${
                 isSuccess 
                   ? 'border-emerald-500 text-emerald-400' 
                   : 'border-orange-500 text-orange-400'
@@ -63,10 +74,10 @@ export function StepTimeline({ history, currentStep }: StepTimelineProps) {
                 }`} />
               </span>
 
-              <div className="flex-1 space-y-1">
+              <div className="flex-1 space-y-1 pl-3">
                 <div className="flex items-center justify-between">
-                  <span className="font-mono text-[10px] text-zinc-500">
-                    Step {item.step.id}
+                  <span className="font-mono text-[10px] text-zinc-500 group-hover:text-indigo-400 transition-colors">
+                    Step {item.step.id} (Click to rollback)
                   </span>
                   <span className={`text-[9px] font-mono uppercase tracking-wider px-1 rounded ${
                     isSuccess 
@@ -76,7 +87,7 @@ export function StepTimeline({ history, currentStep }: StepTimelineProps) {
                     {formatTrigger(item.trigger)}
                   </span>
                 </div>
-                <p className="text-zinc-300 font-sans">{item.step.action}</p>
+                <p className="text-zinc-300 font-sans group-hover:text-zinc-100 transition-colors">{item.step.action}</p>
                 {renderMutations(item.step)}
               </div>
             </div>
