@@ -25,6 +25,47 @@ function cleanJsonResponse(text: string): string {
 }
 
 /**
+ * Attempts to repair truncated JSON by closing any open brackets/braces.
+ * This handles cases where max_tokens cuts the response mid-stream.
+ * Returns the repaired string, or the original if it already parses.
+ */
+function tryRepairJson(raw: string): string {
+  // If already valid, nothing to do
+  try { JSON.parse(raw); return raw; } catch { /* continue */ }
+
+  let repaired = raw.trimEnd();
+
+  // Remove trailing comma before any closing attempt
+  repaired = repaired.replace(/,\s*$/, '');
+
+  // Count open brackets/braces to determine what's missing
+  let openBraces = 0;
+  let openBrackets = 0;
+  let inString = false;
+  let escape = false;
+
+  for (const ch of repaired) {
+    if (escape) { escape = false; continue; }
+    if (ch === '\\' && inString) { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') openBraces++;
+    else if (ch === '}') openBraces--;
+    else if (ch === '[') openBrackets++;
+    else if (ch === ']') openBrackets--;
+  }
+
+  // Close any open string
+  if (inString) repaired += '"';
+
+  // Close open arrays then objects
+  for (let i = 0; i < openBrackets; i++) repaired += ']';
+  for (let i = 0; i < openBraces; i++) repaired += '}';
+
+  return repaired;
+}
+
+/**
  * Interface representing the model information.
  */
 export interface AIModelOption {
@@ -108,7 +149,8 @@ export async function generateAICombo(
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
-            responseMimeType: 'application/json'
+            responseMimeType: 'application/json',
+            maxOutputTokens: 16000
           }
         })
       });
@@ -130,6 +172,7 @@ export async function generateAICombo(
         },
         body: JSON.stringify({
           model,
+          max_tokens: 16000,
           messages: [{ role: 'user', content: prompt }],
           response_format: { type: 'json_object' }
         })
@@ -156,7 +199,7 @@ export async function generateAICombo(
         } as HeadersInit,
         body: JSON.stringify({
           model,
-          max_tokens: 4000,
+          max_tokens: 16000,
           messages: [{ role: 'user', content: prompt }]
         })
       }).catch(() => {
@@ -182,6 +225,7 @@ export async function generateAICombo(
         },
         body: JSON.stringify({
           model,
+          max_tokens: 16000,
           messages: [{ role: 'user', content: prompt }],
           response_format: { type: 'json_object' }
         })
@@ -204,6 +248,7 @@ export async function generateAICombo(
         },
         body: JSON.stringify({
           model,
+          max_tokens: 16000,
           messages: [{ role: 'user', content: prompt }],
           ...(model === 'deepseek-chat' ? { response_format: { type: 'json_object' } } : {})
         })
@@ -225,13 +270,19 @@ export async function generateAICombo(
     throw new Error('AI returned an empty response.');
   }
 
-  // Parse and validate the response
+  // Parse and validate the response — with repair fallback for token-truncated responses
   const cleaned = cleanJsonResponse(responseText);
   let parsedJson: unknown;
   try {
     parsedJson = JSON.parse(cleaned);
   } catch {
-    throw new Error(`AI returned invalid JSON: ${cleaned.substring(0, 100)}...`);
+    // JSON parse failed — try to repair truncated JSON before giving up
+    const repaired = tryRepairJson(cleaned);
+    try {
+      parsedJson = JSON.parse(repaired);
+    } catch {
+      throw new Error(`AI returned invalid JSON (could not repair): ${cleaned.substring(0, 200)}...`);
+    }
   }
 
   const validation = validateComboRoute(parsedJson, deckList);
