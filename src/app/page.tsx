@@ -15,9 +15,10 @@ import { DeckList, ComboRoute, AISettings, ComboStep, ComboHandContext, YGOPROCa
 import { TurnPosition } from '../services/prompts';
 import { ALL_COMBO_ROUTES } from '../data/combos';
 import { CARD_REGISTRY } from '../data/cards';
-import { findMatchingRoutes } from '../engine/comboEngine';
-import { generateAICombo } from '../services/aiClient';
+import { findMatchingRoutes, findPlayableRoutes } from '../engine/comboEngine';
+import { generateAICombo, generateMultipleAICombos } from '../services/aiClient';
 import { exportComboToFile, importComboFromFile } from '../services/comboIO';
+import { ComboSolver } from '../components/ComboSolver';
 
 const DEFAULT_SETTINGS: AISettings = {
   provider: 'gemini',
@@ -71,6 +72,12 @@ export default function Home() {
 
   // Hand selector modal state
   const [isHandSelectorOpen, setIsHandSelectorOpen] = useState(false);
+
+  // Combo solver modal state
+  const [isComboSolverOpen, setIsComboSolverOpen] = useState(false);
+  const [solverHand, setSolverHand] = useState<string[]>([]);
+  const [solverTurn, setSolverTurn] = useState<TurnPosition>('going-first');
+  const [solverAiRoutes, setSolverAiRoutes] = useState<ComboRoute[]>([]);
 
   // Save settings helper
   const handleSaveSettings = (newSettings: AISettings) => {
@@ -252,30 +259,49 @@ export default function Home() {
     setIsHandSelectorOpen(true);
   };
 
-  // Dynamic AI combo generation solver trigger (now receives hand cards + turn position)
-  const handleGenerateAI = async (handCards: string[], turnPosition: TurnPosition) => {
-    if (!deckList) return;
+  // Handle hand configuration confirm from HandSelector modal
+  const handleConfirmHand = (handCards: string[], turnPosition: TurnPosition) => {
     setIsHandSelectorOpen(false);
+    setSolverHand(handCards);
+    setSolverTurn(turnPosition);
+    setSolverAiRoutes([]);
+    setIsComboSolverOpen(true);
+    setAiError(null);
+  };
+
+  // Dynamic AI combo generation solver trigger for all possibilities
+  const handleTriggerAiSolver = async () => {
+    if (!deckList) return;
     setIsAiGenerating(true);
     setAiError(null);
 
     try {
       const cardNames = await getCardNamesForDeck(deckList);
-      const generated = await generateAICombo(deckList, cardNames, settings, handCards, turnPosition, cardDetails);
+      const generatedRoutes = await generateMultipleAICombos(
+        settings,
+        deckList,
+        cardNames,
+        solverHand,
+        solverTurn,
+        cardDetails
+      );
       
-      // Store hand context
-      const newContext: ComboHandContext = {
-        handCardIds: handCards,
-        turnPosition,
-        generatedAt: new Date().toISOString()
-      };
-      setHandContexts(prev => ({ ...prev, [generated.id]: newContext }));
-
-      // Save in runtime memory database
-      setCustomRoutes(prev => [generated, ...prev]);
+      // Store hand context for all generated routes
+      const newContexts: Record<string, ComboHandContext> = {};
+      const now = new Date().toISOString();
+      generatedRoutes.forEach(r => {
+        newContexts[r.id] = {
+          handCardIds: solverHand,
+          turnPosition: solverTurn,
+          generatedAt: now
+        };
+      });
       
-      // Launch combo directly
-      handleStartCombo(generated);
+      setHandContexts(prev => ({ ...prev, ...newContexts }));
+      setSolverAiRoutes(generatedRoutes);
+      
+      // Also register these routes in the custom routes list so they show up in deck lists and are persistable
+      setCustomRoutes(prev => [...generatedRoutes, ...prev]);
     } catch (e: unknown) {
       const err = e instanceof Error ? e.message : 'An unexpected error occurred during AI solving.';
       setAiError(err);
@@ -525,13 +551,35 @@ export default function Home() {
           deck={deckList}
           isOpen={isHandSelectorOpen}
           onClose={() => setIsHandSelectorOpen(false)}
-          onConfirm={handleGenerateAI}
+          onConfirm={handleConfirmHand}
           availableRoutes={getMatchingCombos()}
           onSelectCombo={(route) => {
             setIsHandSelectorOpen(false);
             handleStartCombo(route);
           }}
           isGenerating={isAiGenerating}
+          onCardMouseEnter={handleCardMouseEnter}
+          onCardMouseLeave={handleCardMouseLeave}
+          onCardMouseMove={handleCardMouseMove}
+        />
+      )}
+
+      {/* Combo Solver Modal */}
+      {isComboSolverOpen && deckList && (
+        <ComboSolver
+          playableRoutes={findPlayableRoutes(solverHand, getMatchingCombos())}
+          aiRoutes={solverAiRoutes}
+          handCards={solverHand}
+          turnPosition={solverTurn}
+          isGenerating={isAiGenerating}
+          aiError={aiError}
+          hasAiConfig={settings.useDemo || (settings.customApiKey.trim() !== '')}
+          onSelectCombo={(route) => {
+            setIsComboSolverOpen(false);
+            handleStartCombo(route);
+          }}
+          onGenerateAI={handleTriggerAiSolver}
+          onClose={() => setIsComboSolverOpen(false)}
           onCardMouseEnter={handleCardMouseEnter}
           onCardMouseLeave={handleCardMouseLeave}
           onCardMouseMove={handleCardMouseMove}

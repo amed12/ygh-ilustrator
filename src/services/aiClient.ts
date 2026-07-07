@@ -1,5 +1,5 @@
 import { AISettings, ComboRoute, DeckList, YGOPROCardDetails } from '../types';
-import { buildComboPrompt, TurnPosition } from './prompts';
+import { buildComboPrompt, buildMultiComboPrompt, TurnPosition } from './prompts';
 import { validateComboRoute } from './validator';
 
 /**
@@ -113,158 +113,7 @@ export async function generateAICombo(
   cardDetails: Record<string, YGOPROCardDetails> = {}
 ): Promise<ComboRoute> {
   const prompt = buildComboPrompt(deckList, cardNames, handCards, turnPosition, cardDetails);
-
-  let responseText = '';
-
-  if (settings.useDemo) {
-    // Call our serverless proxy
-    const response = await fetch('/api/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ deckList, cardNames, settings })
-    });
-
-    if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
-      throw new Error(errData.error || `Serverless demo API returned status ${response.status}`);
-    }
-
-    const data = await response.json();
-    responseText = data.rawResponse;
-  } else {
-    // Direct client-side fetch using user's custom API key
-    const key = settings.customApiKey.trim();
-    if (!key) {
-      throw new Error('API Key is required when not using Demo Mode.');
-    }
-
-    const provider = settings.provider;
-    const model = settings.model;
-
-    if (provider === 'gemini') {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            responseMimeType: 'application/json',
-            maxOutputTokens: 16000
-          }
-        })
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`Gemini API Error (${response.status}): ${errText}`);
-      }
-
-      const resJson = await response.json();
-      responseText = resJson.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    } else if (provider === 'openai') {
-      const url = 'https://api.openai.com/v1/chat/completions';
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${key}`
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: 16000,
-          messages: [{ role: 'user', content: prompt }],
-          response_format: { type: 'json_object' }
-        })
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`OpenAI API Error (${response.status}): ${errText}`);
-      }
-
-      const resJson = await response.json();
-      responseText = resJson.choices?.[0]?.message?.content || '';
-    } else if (provider === 'anthropic') {
-      // NOTE: Anthropic has CORS restrictions on direct client-side fetch.
-      // To bypass CORS for local client usage, we instruct the user, but we will attempt it directly.
-      const url = 'https://api.anthropic.com/v1/messages';
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': key,
-          'anthropic-version': '2023-06-01',
-          'dangerously-allow-browser': 'true' // Client SDK allows this, headers might block direct.
-        } as HeadersInit,
-        body: JSON.stringify({
-          model,
-          max_tokens: 16000,
-          messages: [{ role: 'user', content: prompt }]
-        })
-      }).catch(() => {
-        throw new Error('Anthropic API request failed (likely due to browser CORS policies). Please try OpenRouter or Gemini instead.');
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`Anthropic API Error (${response.status}): ${errText}`);
-      }
-
-      const resJson = await response.json();
-      responseText = resJson.content?.[0]?.text || '';
-    } else if (provider === 'openrouter') {
-      const url = 'https://openrouter.ai/api/v1/chat/completions';
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${key}`,
-          'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : '',
-          'X-Title': 'Yu-Gi-Oh Combo Engine'
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: 16000,
-          messages: [{ role: 'user', content: prompt }],
-          response_format: { type: 'json_object' }
-        })
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`OpenRouter API Error (${response.status}): ${errText}`);
-      }
-
-      const resJson = await response.json();
-      responseText = resJson.choices?.[0]?.message?.content || '';
-    } else if (provider === 'deepseek') {
-      const url = 'https://api.deepseek.com/chat/completions';
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${key}`
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: 16000,
-          messages: [{ role: 'user', content: prompt }],
-          ...(model === 'deepseek-chat' ? { response_format: { type: 'json_object' } } : {})
-        })
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`DeepSeek API Error (${response.status}): ${errText}`);
-      }
-
-      const resJson = await response.json();
-      responseText = resJson.choices?.[0]?.message?.content || '';
-    } else {
-      throw new Error(`Unsupported AI provider: ${provider}`);
-    }
-  }
+  const responseText = await callProvider(settings, prompt, 'single', deckList, cardNames, handCards, turnPosition);
 
   if (!responseText) {
     throw new Error('AI returned an empty response.');
@@ -291,4 +140,168 @@ export async function generateAICombo(
   }
 
   return validation.data!;
+}
+
+/**
+ * Generates ALL possible combo lines from the opening hand in a single AI call.
+ * Returns an array of validated ComboRoute objects.
+ * Partial failures are skipped and logged — at least 1 valid combo must be returned.
+ */
+export async function generateMultipleAICombos(
+  settings: AISettings,
+  deckList: DeckList,
+  cardNames: Record<string, string>,
+  handCards: string[],
+  turnPosition: TurnPosition,
+  cardDetails: Record<string, YGOPROCardDetails> = {}
+): Promise<ComboRoute[]> {
+  const prompt = buildMultiComboPrompt(deckList, cardNames, handCards, turnPosition, cardDetails);
+  const rawText = await callProvider(settings, prompt, 'multi', deckList, cardNames, handCards, turnPosition);
+
+  if (!rawText) throw new Error('AI returned empty response.');
+
+  const cleaned = cleanJsonResponse(rawText);
+  let parsedArray: unknown;
+  try {
+    parsedArray = JSON.parse(cleaned);
+  } catch {
+    const repaired = tryRepairJson(cleaned);
+    try {
+      parsedArray = JSON.parse(repaired);
+    } catch {
+      throw new Error(`AI returned invalid JSON for multi-combo: ${cleaned.substring(0, 200)}...`);
+    }
+  }
+
+  if (!Array.isArray(parsedArray)) {
+    // Some models wrap arrays in an object — try to unwrap
+    const asObj = parsedArray as Record<string, unknown>;
+    const firstArray = Object.values(asObj).find(v => Array.isArray(v));
+    if (firstArray) {
+      parsedArray = firstArray;
+    } else {
+      throw new Error('AI did not return an array of combo routes.');
+    }
+  }
+
+  const routes: ComboRoute[] = [];
+  for (const item of parsedArray as unknown[]) {
+    const validation = validateComboRoute(item, deckList);
+    if (validation.valid && validation.data) {
+      routes.push(validation.data);
+    }
+    // Skip invalid items — partial success is acceptable
+  }
+
+  if (routes.length === 0) {
+    throw new Error('AI returned combo array but all routes failed validation.');
+  }
+
+  return routes;
+}
+
+/**
+ * Internal helper: sends prompt to the selected provider and returns raw text.
+ * Support local proxy API call in settings.useDemo mode.
+ */
+async function callProvider(
+  settings: AISettings,
+  prompt: string,
+  mode: 'single' | 'multi',
+  deckList: DeckList,
+  cardNames: Record<string, string>,
+  handCards: string[],
+  turnPosition: TurnPosition
+): Promise<string> {
+  if (settings.useDemo) {
+    const response = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        deckList,
+        cardNames,
+        handCards,
+        turnPosition,
+        mode
+      })
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error || `Serverless demo API returned status ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.rawResponse || '';
+  }
+
+  const key = settings.customApiKey.trim();
+  if (!key) throw new Error('API Key is required when not using Demo Mode.');
+
+  const { provider, model } = settings;
+  let responseText = '';
+
+  if (provider === 'gemini') {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+    const r = await fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 16000 }
+      })
+    });
+    if (!r.ok) throw new Error(`Gemini API Error (${r.status}): ${await r.text()}`);
+    const j = await r.json();
+    responseText = j.candidates?.[0]?.content?.parts?.[0]?.text || '';
+  } else if (provider === 'openai') {
+    const r = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+      body: JSON.stringify({ model, max_tokens: 16000, messages: [{ role: 'user', content: prompt }] })
+    });
+    if (!r.ok) throw new Error(`OpenAI API Error (${r.status}): ${await r.text()}`);
+    const j = await r.json();
+    responseText = j.choices?.[0]?.message?.content || '';
+  } else if (provider === 'anthropic') {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json', 'x-api-key': key,
+        'anthropic-version': '2023-06-01', 'dangerously-allow-browser': 'true'
+      } as HeadersInit,
+      body: JSON.stringify({ model, max_tokens: 16000, messages: [{ role: 'user', content: prompt }] })
+    }).catch(() => { throw new Error('Anthropic CORS block — use OpenRouter or Gemini.'); });
+    if (!r.ok) throw new Error(`Anthropic API Error (${r.status}): ${await r.text()}`);
+    const j = await r.json();
+    responseText = j.content?.[0]?.text || '';
+  } else if (provider === 'openrouter') {
+    const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json', 'Authorization': `Bearer ${key}`,
+        'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : '',
+        'X-Title': 'Yu-Gi-Oh Combo Engine'
+      },
+      body: JSON.stringify({ model, max_tokens: 16000, messages: [{ role: 'user', content: prompt }] })
+    });
+    if (!r.ok) throw new Error(`OpenRouter API Error (${r.status}): ${await r.text()}`);
+    const j = await r.json();
+    responseText = j.choices?.[0]?.message?.content || '';
+  } else if (provider === 'deepseek') {
+    const r = await fetch('https://api.deepseek.com/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+      body: JSON.stringify({
+        model, max_tokens: 16000, messages: [{ role: 'user', content: prompt }],
+        ...(model === 'deepseek-chat' ? { response_format: { type: 'json_object' } } : {})
+      })
+    });
+    if (!r.ok) throw new Error(`DeepSeek API Error (${r.status}): ${await r.text()}`);
+    const j = await r.json();
+    responseText = j.choices?.[0]?.message?.content || '';
+  } else {
+    throw new Error(`Unsupported AI provider: ${provider}`);
+  }
+
+  return responseText;
 }

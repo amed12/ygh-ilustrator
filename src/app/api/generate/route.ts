@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { buildComboPrompt, TurnPosition } from '../../../services/prompts';
+import { buildComboPrompt, buildMultiComboPrompt, TurnPosition } from '../../../services/prompts';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { deckList, cardNames, handCards, turnPosition } = body;
+    const { deckList, cardNames, handCards, turnPosition, mode } = body;
 
     if (!deckList || !cardNames) {
       return NextResponse.json(
@@ -25,8 +25,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Build the system prompt
-    const prompt = buildComboPrompt(deckList, cardNames, resolvedHand, resolvedTurn);
+    // Build the correct system prompt (single or multi)
+    const prompt = mode === 'multi'
+      ? buildMultiComboPrompt(deckList, cardNames, resolvedHand, resolvedTurn)
+      : buildComboPrompt(deckList, cardNames, resolvedHand, resolvedTurn);
 
     // Call Gemini API using process.env.GEMINI_API_KEY
     // Default to a fast/cheap model for the public demo to prevent excessive costs
@@ -39,7 +41,8 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
-          responseMimeType: 'application/json'
+          responseMimeType: 'application/json',
+          maxOutputTokens: 16000
         }
       })
     });

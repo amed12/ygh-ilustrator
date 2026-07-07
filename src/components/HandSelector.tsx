@@ -325,7 +325,7 @@ export function HandSelector({
 
           <button
             onClick={() => onConfirm(selectedCards, turnPosition)}
-            disabled={selectedCards.length === 0 || isGenerating || validCombos.length > 0}
+            disabled={selectedCards.length === 0 || isGenerating}
             className="flex items-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed px-5 py-2.5 text-sm font-semibold text-white transition-all active:scale-[0.98] shadow-lg shadow-emerald-600/15"
           >
             {isGenerating ? (
@@ -333,15 +333,10 @@ export function HandSelector({
                 <span className="animate-spin inline-block w-3.5 h-3.5 rounded-full border-2 border-zinc-500 border-t-white" />
                 <span>Analyzing Hand...</span>
               </>
-            ) : validCombos.length > 0 ? (
-              <>
-                <Sparkle size={16} weight="duotone" className="text-zinc-500" />
-                <span>Use Available Combos Above</span>
-              </>
             ) : (
               <>
                 <Sparkle size={16} weight="fill" />
-                <span>Generate Combo from Hand ({selectedCards.length})</span>
+                <span>Analyze Hand Possibilities ({selectedCards.length})</span>
               </>
             )}
           </button>
