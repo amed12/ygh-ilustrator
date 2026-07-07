@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Key, Cpu, ShieldCheck } from '@phosphor-icons/react';
 import { AISettings, AIProvider } from '../types';
 import { PROVIDER_MODELS } from '../services/aiClient';
@@ -18,7 +18,69 @@ export function SettingsModal({ isOpen, onClose, settings, onSave }: SettingsMod
   const [customApiKey, setCustomApiKey] = useState<string>(settings.customApiKey);
   const [useDemo, setUseDemo] = useState<boolean>(settings.useDemo);
 
+  const [openRouterModels, setOpenRouterModels] = useState<{ id: string; name: string }[]>([]);
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
 
+  useEffect(() => {
+    if (provider === 'openrouter' && openRouterModels.length === 0 && isOpen) {
+      setIsLoadingModels(true);
+      fetch('https://openrouter.ai/api/v1/models')
+        .then(res => res.json())
+        .then(data => {
+          if (data && Array.isArray(data.data)) {
+            const fetched = data.data.map((m: any) => ({
+              id: m.id,
+              name: m.name || m.id
+            }));
+            
+            // Priority list of best models for YGO logic
+            const RECOMMENDED_IDS = [
+              'anthropic/claude-3.5-sonnet',
+              'deepseek/deepseek-chat',
+              'deepseek/deepseek-r1',
+              'google/gemini-2.5-pro',
+              'openai/gpt-4o',
+              'anthropic/claude-3.5-haiku',
+              'google/gemini-2.5-flash',
+              'openai/gpt-4o-mini',
+              'meta-llama/llama-3.3-70b-instruct'
+            ];
+
+            const getModelWeight = (id: string) => {
+              const idx = RECOMMENDED_IDS.findIndex(recId => id.startsWith(recId));
+              return idx !== -1 ? idx : 9999;
+            };
+
+            // Sort: recommended first, then alphabetically
+            fetched.sort((a: any, b: any) => {
+              const weightA = getModelWeight(a.id);
+              const weightB = getModelWeight(b.id);
+              if (weightA !== weightB) return weightA - weightB;
+              return a.name.localeCompare(b.name);
+            });
+
+            const mappedModels = fetched.map((m: any) => {
+              const weight = getModelWeight(m.id);
+              if (weight !== 9999) {
+                return {
+                  id: m.id,
+                  name: `⭐ ${m.name} (Recommended)`
+                };
+              }
+              return m;
+            });
+
+            setOpenRouterModels(mappedModels);
+          }
+        })
+        .catch(err => {
+          console.error('Failed to fetch OpenRouter models:', err);
+        })
+        .finally(() => {
+          setIsLoadingModels(false);
+        });
+    }
+  }, [provider, openRouterModels.length, isOpen]);
 
   // Sync default model when provider changes
   const handleProviderChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -129,18 +191,37 @@ export function SettingsModal({ isOpen, onClose, settings, onSave }: SettingsMod
               {/* Model */}
               <div className="space-y-2">
                 <label className="block text-xs font-mono uppercase tracking-wider text-zinc-400">
-                  MODEL SELECTION
+                  MODEL SELECTION {isLoadingModels && <span className="text-indigo-400 animate-pulse text-[10px] ml-1">(Loading OpenRouter models...)</span>}
                 </label>
                 <select
                   value={model}
                   onChange={(e) => setModel(e.target.value)}
-                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2.5 text-sm text-zinc-200 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  className="w-full rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2.5 text-sm text-zinc-200 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 max-h-[300px]"
                 >
-                  {(PROVIDER_MODELS[provider] || []).map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
+                  {provider === 'openrouter' ? (
+                    openRouterModels.length > 0 ? (
+                      openRouterModels.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="">{isLoadingModels ? 'Loading OpenRouter models...' : 'No models loaded'}</option>
+                        {(PROVIDER_MODELS.openrouter || []).map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name} (Offline Fallback)
+                          </option>
+                        ))}
+                      </>
+                    )
+                  ) : (
+                    (PROVIDER_MODELS[provider] || []).map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))
+                  )}
                 </select>
               </div>
 
