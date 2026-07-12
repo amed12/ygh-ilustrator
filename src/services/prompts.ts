@@ -34,24 +34,26 @@ function formatCardBlock(id: string, details: YGOPROCardDetails | undefined, isC
   return `  - ID: ${id} | ${details.name}${typeLine}${statLine}${effectLine}`;
 }
 
+interface PromptSections {
+  handSection: string;
+  extraSection: string;
+  mainSection: string;
+  mainDeckOthers: string[];
+  sideSection: string;
+  turnContext: string;
+  sideDeckStrategy: string;
+}
+
 /**
- * Builds a high-intelligence prompt for LLMs to generate Yu-Gi-Oh combos.
- * Sends full card effects for hand cards + Extra Deck, summary effects for main deck.
- * Includes strategic analysis, side deck strategy, and strict end board crafting requirements.
- *
- * @param deckList       - The full imported deck list (main/extra/side).
- * @param cardNames      - Resolved card name map (passcode → name). Used as fallback.
- * @param handCards      - Card IDs the player currently has in hand.
- * @param turnPosition   - Whether the player is going first or second.
- * @param cardDetails    - Full card data from YGOPRODECK API (includes effect text, types, stats).
+ * Builds the shared card-data sections (hand/extra/main/side + turn/side strategy context)
+ * used by both the single-combo and multi-combo prompt builders.
  */
-export function buildComboPrompt(
+function buildPromptSections(
   deckList: DeckList,
-  cardNames: Record<string, string>,
   handCards: string[],
   turnPosition: TurnPosition,
-  cardDetails: Record<string, YGOPROCardDetails> = {}
-): string {
+  cardDetails: Record<string, YGOPROCardDetails>
+): PromptSections {
   const handSet = new Set(handCards);
 
   // ── OPENING HAND (FULL EFFECT — most critical) ────────────────────────────
@@ -100,6 +102,30 @@ Analyze the side deck cards above and in the \"tags\" field include \"side-in\" 
   - Searchable power cards that improve specific matchups
 Include in the combo description a note on which side deck cards could replace/augment specific steps in game 2/3.`
     : `SIDE DECK STRATEGY: No side deck provided. Skip side strategy analysis.`;
+
+  return { handSection, extraSection, mainSection, mainDeckOthers, sideSection, turnContext, sideDeckStrategy };
+}
+
+/**
+ * Builds a high-intelligence prompt for LLMs to generate Yu-Gi-Oh combos.
+ * Sends full card effects for hand cards + Extra Deck, summary effects for main deck.
+ * Includes strategic analysis, side deck strategy, and strict end board crafting requirements.
+ *
+ * @param deckList       - The full imported deck list (main/extra/side).
+ * @param cardNames      - Resolved card name map (passcode → name). Used as fallback.
+ * @param handCards      - Card IDs the player currently has in hand.
+ * @param turnPosition   - Whether the player is going first or second.
+ * @param cardDetails    - Full card data from YGOPRODECK API (includes effect text, types, stats).
+ */
+export function buildComboPrompt(
+  deckList: DeckList,
+  cardNames: Record<string, string>,
+  handCards: string[],
+  turnPosition: TurnPosition,
+  cardDetails: Record<string, YGOPROCardDetails> = {}
+): string {
+  const { handSection, extraSection, mainSection, mainDeckOthers, sideSection, turnContext, sideDeckStrategy } =
+    buildPromptSections(deckList, handCards, turnPosition, cardDetails);
 
   return `You are an elite-level competitive Yu-Gi-Oh! TCG / Master Duel deck analyst and professional combo architect.
 Your job is to generate a complete, deeply-analyzed combo route with a fully-crafted end board.
@@ -208,5 +234,135 @@ JSON SCHEMA:
   ],
   "tags": ["going-first" | "going-second" | "otk" | "grind" | "defensive" | "side-in"]
 }`;
+}
+
+/**
+ * Builds a prompt for LLMs to generate MULTIPLE distinct combo routes from a single opening hand
+ * in one call — one route per viable starter/line (e.g. "if you open card A", "if you open card B").
+ * Each route follows the exact same per-route JSON schema as buildComboPrompt, returned as a JSON array.
+ *
+ * @param deckList       - The full imported deck list (main/extra/side).
+ * @param cardNames      - Resolved card name map (passcode → name). Used as fallback.
+ * @param handCards      - Card IDs the player currently has in hand.
+ * @param turnPosition   - Whether the player is going first or second.
+ * @param cardDetails    - Full card data from YGOPRODECK API (includes effect text, types, stats).
+ */
+export function buildMultiComboPrompt(
+  deckList: DeckList,
+  cardNames: Record<string, string>,
+  handCards: string[],
+  turnPosition: TurnPosition,
+  cardDetails: Record<string, YGOPROCardDetails> = {}
+): string {
+  const { handSection, extraSection, mainSection, mainDeckOthers, sideSection, turnContext, sideDeckStrategy } =
+    buildPromptSections(deckList, handCards, turnPosition, cardDetails);
+
+  return `You are an elite-level competitive Yu-Gi-Oh! TCG / Master Duel deck analyst and professional combo architect.
+Your job is to analyze this single opening hand and generate EVERY distinct, viable combo route it supports —
+not just one line. Different routes should use different starters, different Extra Deck payoffs, or fundamentally
+different sequencing — not trivial rewordings of the same line.
+
+═══════════════════════════════════════════════════════
+MISSION CRITICAL REQUIREMENTS (READ BEFORE ALL ELSE):
+═══════════════════════════════════════════════════════
+1. READ EVERY CARD EFFECT below before generating anything. Do not rely on general knowledge — base all reasoning on the exact effect text provided.
+2. IDENTIFY EVERY VIABLE STARTER in the hand. For each one, produce a separate, complete combo route that uses it as the entry point.
+3. AT LEAST 1 ROUTE, UP TO 4. If the hand only supports one real line, return an array with exactly 1 route — do not pad with redundant near-duplicates.
+4. WITHIN EACH ROUTE, ALL HAND CARDS MUST BE USED. Every card in the opening hand must appear in that route's steps. Zero waste per route.
+5. END BOARD MUST BE FULLY CRAFTED for each route. Specify every monster and spell/trap on the field at the end, and EXACTLY what interruption each one provides (negate type, destruction, banish, etc).
+6. INTERRUPTIONS MUST BE SPECIFIC. Not "1 negate" — write "Raidraptor - Ultimate Falcon (unaffected by opponent's card effects, reduces all opponent monster ATK to 0 during opponent's turn)".
+7. BRANCHING FOR HAND TRAPS. Within each route, provide fallback branches for Ash Blossom, Maxx "C", Nibiru, and Impermanence on every key Special Summon.
+
+════════════════════════════════════════
+TURN POSITION & STRATEGIC OBJECTIVE:
+════════════════════════════════════════
+${turnContext}
+
+════════════════════════════════════════
+${sideDeckStrategy}
+════════════════════════════════════════
+
+════════════════════════════
+OPENING HAND (${handCards.length} cards) — FULL CARD EFFECTS:
+════════════════════════════
+${handSection}
+
+════════════════════════════
+EXTRA DECK (${deckList.extra.length} cards) — FULL CARD EFFECTS (plan your end board from these):
+════════════════════════════
+${extraSection}
+
+════════════════════════════
+MAIN DECK (${mainDeckOthers.length} remaining cards — not in hand):
+════════════════════════════
+${mainSection}
+
+════════════════════════════
+SIDE DECK (${deckList.side.length} cards) — for game 2/3 analysis:
+════════════════════════════
+${sideSection}
+
+═══════════════════════════════════
+STRICT DESIGN RULES (apply to EVERY route in the array):
+═══════════════════════════════════
+1. NO HALLUCINATION: Only use card IDs that appear in the deck lists above.
+2. NON-DECK CARDS: For tokens, set cardId to "TOKEN". For opponent's cards (e.g. Nibiru), use "OPPONENT". For generic actions, use "NONE".
+3. BRANCHING: Every step that involves a Special Summon MUST have response branches: "success", "ash_blossom" (or "imperm_veiler"), "nibiru" (after 5th summon), "maxx_c", and "generic_negate" where applicable.
+4. MAXX "C" EMERGENCY LINE: If going first, provide a fallback path triggered by "maxx_c" on the first Special Summon that establishes at least 1 disruption while minimizing further special summons.
+5. STATE MUTATIONS: For every step, track hand/field/GY/banished changes in stateMutations. Accuracy is required.
+6. STEP IDs: Within EACH route, step IDs must be unique 1-indexed integers local to that route (every route restarts numbering at 1). No broken pointers. Last step in each branch must have next_step: null.
+7. ALL REQUIRED CARDS: Each route's "requiredCards" array must list ONLY the card IDs from the opening hand that are essential starters for THAT route.
+8. DISTINCT IDs ACROSS ROUTES: Each route's top-level "id" string must be unique across the array (e.g. "combo-a-starter-line", "combo-b-starter-line").
+
+═══════════════════════════════════
+OUTPUT FORMAT:
+═══════════════════════════════════
+Respond with ONLY a valid raw JSON ARRAY of route objects. No markdown, no backticks, no explanation.
+Each element of the array MUST follow the exact schema below (identical to a single combo route).
+
+CRITICAL STEP ID RULES — VIOLATING THESE MAKES THE OUTPUT INVALID:
+- Within each route, all step IDs MUST be sequential integers: 1, 2, 3, 4 ... up to N.
+- EVERY "next_step" value MUST reference an ID that actually exists in that route's steps array.
+- Fallback branches (ash_blossom, maxx_c, nibiru) MUST point to a real step ID you define.
+  * If a fallback ends the combo immediately: use "next_step": null.
+  * If a fallback diverges into a shorter line: define those steps with their own IDs and include them in the steps array.
+- NEVER reference a step ID in "next_step" unless that ID appears as "id" somewhere in that route's steps array.
+- The main success path uses IDs 1, 2, 3 ... N. Fallback paths start from N+1 and continue sequentially.
+
+JSON SCHEMA (array of these):
+[
+  {
+    "id": "string (unique id across the array, e.g. 'combo-rr-ultimate-falcon-line')",
+    "name": "string (descriptive name, max 50 chars)",
+    "archetype": "string (primary archetype of this deck)",
+    "description": "string (2-3 sentences: what the combo achieves, what cards are used, what the end board does)",
+    "requiredCards": ["string (card IDs from opening hand that are essential starters for this route)"],
+    "endBoard": {
+      "monsters": ["string (card ID of each monster on field at end)"],
+      "spellsTraps": ["string (card ID of each set/active spell or trap at end)"],
+      "interruptions": [
+        "string (specific disruption — card name + exactly what it does, e.g. 'Raidraptor - Ultimate Falcon: unaffected by card effects, reduces all opponent monster ATK to 0 in opponent turn')"
+      ]
+    },
+    "steps": [
+      {
+        "id": 1,
+        "action": "string (clear human-readable instruction for this step)",
+        "cardId": "string (passcode of the card acting)",
+        "responses": [
+          { "trigger": "success", "next_step": 2 },
+          { "trigger": "maxx_c", "next_step": 4 }
+        ],
+        "stateMutations": {
+          "hand": { "add": [], "remove": ["card_id_used"] },
+          "field": { "add": ["card_id_summoned"], "remove": [] },
+          "gy": { "add": [], "remove": [] },
+          "banished": { "add": [], "remove": [] }
+        }
+      }
+    ],
+    "tags": ["going-first" | "going-second" | "otk" | "grind" | "defensive" | "side-in"]
+  }
+]`;
 }
 
