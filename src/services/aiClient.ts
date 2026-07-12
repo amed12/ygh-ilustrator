@@ -227,6 +227,13 @@ async function callProvider(
     });
 
     if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error('Demo Mode is unavailable on this deployment (this host cannot run the AI server route). Switch to Custom Key Mode in Settings and add your own API key to generate combos.');
+      }
+      if (response.status === 429) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Demo Mode is rate-limited. Please wait a bit, or add your own API key in Settings.');
+      }
       const errData = await response.json().catch(() => ({}));
       throw new Error(errData.error || `Serverless demo API returned status ${response.status}`);
     }
