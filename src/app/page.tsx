@@ -548,6 +548,7 @@ export default function Home() {
                 onCreateCombo={() => setView('create-combo')}
                 customRouteIds={new Set(customRoutes.map(r => r.id))}
                 deckCardIds={new Set([...deckList.main, ...deckList.extra, ...deckList.side])}
+                deck={deckList}
               />
             </div>
           </div>

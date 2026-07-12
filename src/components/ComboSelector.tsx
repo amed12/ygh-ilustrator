@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useRef } from 'react';
-import { ComboRoute } from '../types';
+import { ComboRoute, DeckList } from '../types';
 import { CARD_REGISTRY } from '../data/cards';
-import { Play, Tag, Lightbulb, Sparkle, UploadSimple, DownloadSimple, Plus } from '@phosphor-icons/react';
+import { probabilityToOpenCombo, probabilityToBrick } from '../engine/probability';
+import { Play, Tag, Lightbulb, Sparkle, UploadSimple, DownloadSimple, Plus, ChartBar } from '@phosphor-icons/react';
 
 interface ComboSelectorProps {
   matchingRoutes: ComboRoute[];
@@ -16,6 +17,7 @@ interface ComboSelectorProps {
   onCreateCombo?: () => void;
   customRouteIds?: Set<string>;
   deckCardIds?: Set<string>;
+  deck?: DeckList;
 }
 
 export function ComboSelector({
@@ -28,7 +30,8 @@ export function ComboSelector({
   onImportCombo,
   onCreateCombo,
   customRouteIds = new Set(),
-  deckCardIds = new Set()
+  deckCardIds = new Set(),
+  deck
 }: ComboSelectorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -56,6 +59,16 @@ export function ComboSelector({
         <p className="text-xs text-zinc-500 mt-1 leading-normal">
           Select a pre-configured playbook route below or generate a dynamic one with AI.
         </p>
+        {deck && matchingRoutes.length > 0 && deck.main.length > 0 && (() => {
+          const brick5 = probabilityToBrick(deck, matchingRoutes, 5);
+          const brick6 = probabilityToBrick(deck, matchingRoutes, 6);
+          return (
+            <div className="mt-2 inline-flex items-center gap-1.5 rounded bg-zinc-900/60 border border-zinc-800 px-2 py-1 text-[10px] font-mono text-zinc-400">
+              <ChartBar size={12} className="text-zinc-500" />
+              <span>Brick chance: {(brick5 * 100).toFixed(1)}% (1st) / {(brick6 * 100).toFixed(1)}% (2nd)</span>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Grid of Combos */}
@@ -115,6 +128,20 @@ export function ComboSelector({
                 <p className="text-xs text-zinc-400 leading-relaxed">
                   {route.description}
                 </p>
+
+                {deck && deck.main.length > 0 && (() => {
+                  const open5 = probabilityToOpenCombo(deck, route, 5);
+                  const open6 = probabilityToOpenCombo(deck, route, 6);
+                  return (
+                    <div
+                      className="inline-flex items-center gap-1 rounded bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 text-[9px] font-semibold text-emerald-400 font-mono w-fit"
+                      title="Chance this exact hand of starters is drawn naturally, going first (5 cards) vs going second (6 cards)"
+                    >
+                      <ChartBar size={10} />
+                      <span>Open odds: {(open5 * 100).toFixed(1)}% (1st) / {(open6 * 100).toFixed(1)}% (2nd)</span>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Footer Meta */}
@@ -122,8 +149,8 @@ export function ComboSelector({
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <Tag size={12} className="text-zinc-500" />
                   {route.tags.map((tag) => (
-                    <span 
-                      key={tag} 
+                    <span
+                      key={tag}
                       className="text-[9px] font-mono uppercase tracking-wider bg-zinc-900/50 text-zinc-500 px-1.5 py-0.5 rounded border border-zinc-900"
                     >
                       {tag}
