@@ -25,17 +25,23 @@ export function findMatchingRoutes(deck: DeckList, allRoutes: ComboRoute[]): Com
  * Finds all combo routes that are PLAYABLE given the current opening hand.
  * A route is playable if all its requiredCards are present in the hand (with correct copy count).
  * This is stricter than findMatchingRoutes which only checks deck membership.
+ *
+ * requiredCards may include Extra Deck / Side Deck pieces the route also depends on — those can
+ * never be drawn into an opening hand, so they're excluded from the hand-count check via
+ * `deck.main`. Only main-deck cards are checked against the hand.
  */
-export function findPlayableRoutes(handCards: string[], allRoutes: ComboRoute[]): ComboRoute[] {
+export function findPlayableRoutes(handCards: string[], allRoutes: ComboRoute[], deck: DeckList): ComboRoute[] {
+  const mainDeckSet = new Set(deck.main);
   const handCounts = new Map<string, number>();
   handCards.forEach(id => handCounts.set(id, (handCounts.get(id) || 0) + 1));
 
   return allRoutes.filter(route => {
-    if (route.requiredCards.length === 0) return false;
-    
+    const handStarters = route.requiredCards.filter(id => mainDeckSet.has(id));
+    if (handStarters.length === 0) return false;
+
     const reqCounts = new Map<string, number>();
-    route.requiredCards.forEach(id => reqCounts.set(id, (reqCounts.get(id) || 0) + 1));
-    
+    handStarters.forEach(id => reqCounts.set(id, (reqCounts.get(id) || 0) + 1));
+
     for (const [id, count] of reqCounts.entries()) {
       if ((handCounts.get(id) || 0) < count) return false;
     }

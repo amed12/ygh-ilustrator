@@ -567,7 +567,7 @@ export default function Home() {
       {/* Combo Solver Modal */}
       {isComboSolverOpen && deckList && (
         <ComboSolver
-          playableRoutes={findPlayableRoutes(solverHand, getMatchingCombos())}
+          playableRoutes={findPlayableRoutes(solverHand, getMatchingCombos(), deckList)}
           aiRoutes={solverAiRoutes}
           handCards={solverHand}
           turnPosition={solverTurn}

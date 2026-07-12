@@ -5,6 +5,7 @@ import { CardDisplay } from './CardDisplay';
 import { DeckList, ComboRoute } from '../types';
 import { TurnPosition } from '../services/prompts';
 import { CARD_REGISTRY } from '../data/cards';
+import { findPlayableRoutes } from '../engine/comboEngine';
 import { X, Shuffle, Sparkle, SunHorizon, MoonStars, Hand } from '@phosphor-icons/react';
 
 interface HandSelectorProps {
@@ -88,25 +89,12 @@ export function HandSelector({
     return selectedCards.filter(id => id === cardId).length;
   };
 
-  // Find combos whose required cards are a subset of the selected hand
+  // Find combos whose main-deck starters are a subset of the selected hand.
+  // (Extra/Side Deck pieces in requiredCards can never be drawn, so they're excluded — see findPlayableRoutes.)
   const validCombos = useMemo(() => {
     if (selectedCards.length === 0) return [];
-    
-    const handCounts = new Map<string, number>();
-    selectedCards.forEach(id => handCounts.set(id, (handCounts.get(id) || 0) + 1));
-
-    return availableRoutes.filter(route => {
-      if (route.requiredCards.length === 0) return false; // empty requirements don't match
-      
-      const reqCounts = new Map<string, number>();
-      route.requiredCards.forEach(id => reqCounts.set(id, (reqCounts.get(id) || 0) + 1));
-      
-      for (const [id, reqCount] of reqCounts.entries()) {
-        if ((handCounts.get(id) || 0) < reqCount) return false;
-      }
-      return true;
-    });
-  }, [selectedCards, availableRoutes]);
+    return findPlayableRoutes(selectedCards, availableRoutes, deck);
+  }, [selectedCards, availableRoutes, deck]);
 
   if (!isOpen) return null;
 
