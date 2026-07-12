@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Gear, Plus, Cardholder } from '@phosphor-icons/react';
 import { DeckImporter } from '../components/DeckImporter';
 import { DeckGrid } from '../components/DeckGrid';
@@ -26,6 +26,15 @@ const DEFAULT_SETTINGS: AISettings = {
   customApiKey: '',
   useDemo: true
 };
+
+const SESSION_STORAGE_KEY = 'yugioh_combo_session';
+
+interface PersistedSession {
+  deckList: DeckList | null;
+  customRoutes: ComboRoute[];
+  handContexts: Record<string, ComboHandContext>;
+  cardDetails: Record<string, YGOPROCardDetails>;
+}
 
 export default function Home() {
   // App views: 'import' | 'deck' | 'combo' | 'create-combo'
@@ -78,6 +87,60 @@ export default function Home() {
   const [solverHand, setSolverHand] = useState<string[]>([]);
   const [solverTurn, setSolverTurn] = useState<TurnPosition>('going-first');
   const [solverAiRoutes, setSolverAiRoutes] = useState<ComboRoute[]>([]);
+
+  // Guards the write effect below from firing (and clobbering storage with empty
+  // defaults) before the load effect has had a chance to restore a prior session.
+  const [isSessionLoaded, setIsSessionLoaded] = useState(false);
+
+  // Restore the last session's deck/routes/card data on mount. Deferred to an effect
+  // (rather than a useState initializer) so the first client render matches the
+  // statically-prerendered HTML and only hydrates from localStorage afterward.
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(SESSION_STORAGE_KEY);
+      if (stored) {
+        const session: PersistedSession = JSON.parse(stored);
+        if (session.deckList) {
+          setDeckList(session.deckList);
+          setView('deck');
+        }
+        if (session.customRoutes?.length) setCustomRoutes(session.customRoutes);
+        if (session.handContexts) setHandContexts(session.handContexts);
+        if (session.cardDetails) setCardDetails(session.cardDetails);
+      }
+    } catch (e) {
+      console.error('Failed to restore saved session:', e);
+    } finally {
+      setIsSessionLoaded(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist deck/routes/card data whenever they change, so a refresh doesn't lose them.
+  // cardDetails is trimmed to the current deck's cards to avoid unbounded growth across
+  // decks imported over the app's lifetime.
+  useEffect(() => {
+    if (!isSessionLoaded) return;
+    try {
+      const relevantIds = deckList
+        ? new Set([...deckList.main, ...deckList.extra, ...deckList.side])
+        : new Set<string>();
+      const trimmedCardDetails: Record<string, YGOPROCardDetails> = {};
+      relevantIds.forEach(id => {
+        if (cardDetails[id]) trimmedCardDetails[id] = cardDetails[id];
+      });
+
+      const session: PersistedSession = {
+        deckList,
+        customRoutes,
+        handContexts,
+        cardDetails: trimmedCardDetails
+      };
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+    } catch (e) {
+      console.error('Failed to save session (localStorage may be full or unavailable):', e);
+    }
+  }, [isSessionLoaded, deckList, customRoutes, handContexts, cardDetails]);
 
   // Save settings helper
   const handleSaveSettings = (newSettings: AISettings) => {
