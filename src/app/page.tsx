@@ -18,6 +18,7 @@ import { CARD_REGISTRY } from '../data/cards';
 import { findMatchingRoutes, findPlayableRoutes } from '../engine/comboEngine';
 import { generateAICombo, generateMultipleAICombos } from '../services/aiClient';
 import { exportComboToFile, importComboFromFile } from '../services/comboIO';
+import { buildShareUrl, readShareParamFromLocation, decodeShareableCombo, clearShareParamFromLocation } from '../services/shareLink';
 import { ComboSolver } from '../components/ComboSolver';
 
 const DEFAULT_SETTINGS: AISettings = {
@@ -116,6 +117,9 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Tracks which route's share link was most recently copied, to flash "Copied!" feedback.
+  const [justCopiedRouteId, setJustCopiedRouteId] = useState<string | null>(null);
+
   // Persist deck/routes/card data whenever they change, so a refresh doesn't lose them.
   // cardDetails is trimmed to the current deck's cards to avoid unbounded growth across
   // decks imported over the app's lifetime.
@@ -204,6 +208,44 @@ export default function Home() {
     
     setCardDetails(prev => ({ ...prev, ...detailsMap }));
   };
+
+  // If the URL has a #share=... fragment, decode it and load the bundled combo (and deck,
+  // if the sender included one) so the recipient can open a link and start practicing
+  // immediately. Runs once on mount; an explicit share link takes precedence over whatever
+  // the last local session had (the session-restore effect above runs first).
+  useEffect(() => {
+    const shareParam = readShareParamFromLocation();
+    if (!shareParam) return;
+
+    (async () => {
+      const payload = await decodeShareableCombo(shareParam);
+      clearShareParamFromLocation();
+
+      if (!payload) {
+        alert('This share link appears to be invalid or corrupted.');
+        return;
+      }
+
+      setCustomRoutes(prev => {
+        const combined = [payload.route, ...prev];
+        const unique = new Map(combined.map(r => [r.id, r]));
+        return Array.from(unique.values());
+      });
+      if (payload.handContext) {
+        setHandContexts(prev => ({ ...prev, [payload.route.id]: payload.handContext! }));
+      }
+
+      if (payload.deckList) {
+        setDeckList(payload.deckList);
+        loadCardDetailsForDeck(payload.deckList);
+      }
+
+      setSelectedRoute(payload.route);
+      setCurrentStepId(payload.route.steps.length > 0 ? payload.route.steps[0].id : null);
+      setComboHistory([]);
+      setView('combo');
+    })();
+  }, []);
 
   const handleCardMouseEnter = (cardId: string, e: React.MouseEvent) => {
     setHoveredCardId(cardId);
@@ -379,6 +421,24 @@ export default function Home() {
     exportComboToFile(route, context);
   };
 
+  // Copies a shareable link to this combo (bundling the current deck, if any) to the clipboard.
+  const handleShareCombo = async (route: ComboRoute) => {
+    try {
+      const url = await buildShareUrl({
+        version: '1.0',
+        route,
+        handContext: handContexts[route.id],
+        deckList: deckList ?? undefined
+      });
+      await navigator.clipboard.writeText(url);
+      setJustCopiedRouteId(route.id);
+      setTimeout(() => setJustCopiedRouteId(prev => (prev === route.id ? null : prev)), 2000);
+    } catch (e) {
+      console.error('Failed to build/copy share link:', e);
+      alert('Failed to generate a share link. Your browser may not support the required APIs.');
+    }
+  };
+
   // Import combo file helper
   const handleImportCombo = async (files: File[]) => {
     try {
@@ -544,6 +604,8 @@ export default function Home() {
                 isAiGenerating={isAiGenerating}
                 hasAiConfig={!settings.useDemo && settings.customApiKey.trim() !== ''}
                 onExportRoute={handleExportCombo}
+                onShareRoute={handleShareCombo}
+                sharedRouteId={justCopiedRouteId}
                 onImportCombo={handleImportCombo}
                 onCreateCombo={() => setView('create-combo')}
                 customRouteIds={new Set(customRoutes.map(r => r.id))}
@@ -571,6 +633,8 @@ export default function Home() {
                 ? () => handleExportCombo(selectedRoute)
                 : undefined
             }
+            onShare={() => handleShareCombo(selectedRoute)}
+            justCopied={justCopiedRouteId === selectedRoute.id}
             onCardMouseEnter={handleCardMouseEnter}
             onCardMouseLeave={handleCardMouseLeave}
             onCardMouseMove={handleCardMouseMove}

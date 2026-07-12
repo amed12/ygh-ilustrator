@@ -6,7 +6,7 @@ import { CardDisplay } from './CardDisplay';
 import { StepTimeline } from './StepTimeline';
 import { FlowChart } from './FlowChart';
 import { OpeningHandPanel } from './OpeningHandPanel';
-import { ArrowLeft, ArrowCounterClockwise, DownloadSimple, Check, Trophy, SmileySad, XCircle } from '@phosphor-icons/react';
+import { ArrowLeft, ArrowCounterClockwise, DownloadSimple, ShareNetwork, Check, Trophy, SmileySad, XCircle } from '@phosphor-icons/react';
 
 interface ComboNavigatorProps {
   route: ComboRoute;
@@ -19,6 +19,8 @@ interface ComboNavigatorProps {
   onBackToDeck: () => void;
   handContext?: ComboHandContext;
   onExport?: () => void;
+  onShare?: () => void;
+  justCopied?: boolean;
   onStepClick?: (historyIndex: number) => void;
   onCardMouseEnter?: (cardId: string, e: React.MouseEvent) => void;
   onCardMouseLeave?: () => void;
@@ -36,6 +38,8 @@ export function ComboNavigator({
   onBackToDeck,
   handContext,
   onExport,
+  onShare,
+  justCopied,
   onStepClick,
   onCardMouseEnter,
   onCardMouseLeave,
@@ -80,6 +84,18 @@ export function ComboNavigator({
         </div>
 
         <div className="flex items-center gap-2">
+          {onShare && (
+            <button
+              onClick={onShare}
+              disabled={justCopied}
+              className="flex items-center gap-1.5 rounded-lg border border-zinc-800 hover:border-zinc-700 bg-zinc-900/40 hover:bg-zinc-900 disabled:opacity-60 px-3.5 py-2 text-xs font-semibold text-zinc-300 transition-all active:scale-[0.98]"
+              title="Copy a shareable link to this combo (bundles the deck so a friend can open and practice it directly)"
+            >
+              <ShareNetwork size={14} />
+              <span>{justCopied ? 'Copied!' : 'Share Link'}</span>
+            </button>
+          )}
+
           {onExport && (
             <button
               onClick={onExport}

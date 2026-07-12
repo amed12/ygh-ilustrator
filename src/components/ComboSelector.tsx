@@ -4,7 +4,7 @@ import React, { useRef } from 'react';
 import { ComboRoute, DeckList } from '../types';
 import { CARD_REGISTRY } from '../data/cards';
 import { probabilityToOpenCombo, probabilityToBrick } from '../engine/probability';
-import { Play, Tag, Lightbulb, Sparkle, UploadSimple, DownloadSimple, Plus, ChartBar } from '@phosphor-icons/react';
+import { Play, Tag, Lightbulb, Sparkle, UploadSimple, DownloadSimple, ShareNetwork, Plus, ChartBar } from '@phosphor-icons/react';
 
 interface ComboSelectorProps {
   matchingRoutes: ComboRoute[];
@@ -13,6 +13,8 @@ interface ComboSelectorProps {
   isAiGenerating: boolean;
   hasAiConfig: boolean;
   onExportRoute?: (route: ComboRoute) => void;
+  onShareRoute?: (route: ComboRoute) => void;
+  sharedRouteId?: string | null;
   onImportCombo?: (files: File[]) => void;
   onCreateCombo?: () => void;
   customRouteIds?: Set<string>;
@@ -27,6 +29,8 @@ export function ComboSelector({
   isAiGenerating,
   hasAiConfig,
   onExportRoute,
+  onShareRoute,
+  sharedRouteId,
   onImportCombo,
   onCreateCombo,
   customRouteIds = new Set(),
@@ -86,6 +90,19 @@ export function ComboSelector({
                     {route.name}
                   </h4>
                   <div className="flex items-center gap-1.5 shrink-0">
+                    {onShareRoute && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onShareRoute(route);
+                        }}
+                        className="rounded p-1 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 border border-transparent hover:border-zinc-800 transition-all"
+                        title="Copy a shareable link to this combo (bundles the deck)"
+                      >
+                        <ShareNetwork size={12} className={sharedRouteId === route.id ? 'text-emerald-400' : ''} />
+                      </button>
+                    )}
                     {onExportRoute && customRouteIds.has(route.id) && (
                       <button
                         type="button"

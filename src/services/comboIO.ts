@@ -126,20 +126,14 @@ function parseEndBoard(raw: unknown): EndBoard | undefined {
 }
 
 /**
- * Safe runtime validation typeguard for exported combo files.
+ * Safe runtime validation/parsing for a raw ComboRoute-shaped object. Shared by file import
+ * (validateExportFile below) and share-link decoding (services/shareLink.ts) so both entry
+ * points enforce identical structural guarantees.
  */
-function validateExportFile(raw: unknown): ComboExportFile | null {
+export function parseComboRouteRaw(raw: unknown): ComboRoute | null {
   if (!raw || typeof raw !== 'object') return null;
-  const data = raw as Record<string, unknown>;
+  const routeObj = raw as Record<string, unknown>;
 
-  // Check version and top-level fields
-  if (data.version !== '1.0' || !data.route || typeof data.route !== 'object') {
-    return null;
-  }
-
-  const routeObj = data.route as Record<string, unknown>;
-
-  // Basic validation of ComboRoute structure
   if (
     typeof routeObj.id !== 'string' ||
     typeof routeObj.name !== 'string' ||
@@ -150,42 +144,59 @@ function validateExportFile(raw: unknown): ComboExportFile | null {
     return null;
   }
 
-  // Validate hand context if present
-  let resolvedHandContext: ComboHandContext | undefined = undefined;
-  if (data.handContext && typeof data.handContext === 'object') {
-    const hc = data.handContext as Record<string, unknown>;
-    if (
-      Array.isArray(hc.handCardIds) &&
-      (hc.turnPosition === 'going-first' || hc.turnPosition === 'going-second')
-    ) {
-      resolvedHandContext = {
-        handCardIds: hc.handCardIds.map(String),
-        turnPosition: hc.turnPosition,
-        generatedAt: typeof hc.generatedAt === 'string' ? hc.generatedAt : new Date().toISOString()
-      };
-    }
-  }
+  return {
+    id: String(routeObj.id),
+    name: String(routeObj.name),
+    archetype: String(routeObj.archetype),
+    description: String(routeObj.description || ''),
+    requiredCards: (routeObj.requiredCards as string[]).map(String),
+    steps: (routeObj.steps as Record<string, unknown>[]).map((step): ComboStep => ({
+      id: Number(step.id),
+      action: String(step.action || ''),
+      cardId: String(step.cardId || ''),
+      responses: parseStepResponses(step),
+      stateMutations: parseStateMutations(step.stateMutations)
+    })),
+    tags: Array.isArray(routeObj.tags) ? routeObj.tags.map(String) : [],
+    endBoard: parseEndBoard(routeObj.endBoard)
+  };
+}
 
-  // Map to a strictly-typed ComboExportFile
+/**
+ * Safe runtime validation/parsing for a raw ComboHandContext-shaped object.
+ */
+export function parseHandContextRaw(raw: unknown): ComboHandContext | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const hc = raw as Record<string, unknown>;
+  if (
+    !Array.isArray(hc.handCardIds) ||
+    (hc.turnPosition !== 'going-first' && hc.turnPosition !== 'going-second')
+  ) {
+    return undefined;
+  }
+  return {
+    handCardIds: hc.handCardIds.map(String),
+    turnPosition: hc.turnPosition,
+    generatedAt: typeof hc.generatedAt === 'string' ? hc.generatedAt : new Date().toISOString()
+  };
+}
+
+/**
+ * Safe runtime validation typeguard for exported combo files.
+ */
+function validateExportFile(raw: unknown): ComboExportFile | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const data = raw as Record<string, unknown>;
+
+  if (data.version !== '1.0') return null;
+
+  const route = parseComboRouteRaw(data.route);
+  if (!route) return null;
+
   return {
     version: '1.0',
     exportedAt: typeof data.exportedAt === 'string' ? data.exportedAt : new Date().toISOString(),
-    route: {
-      id: String(routeObj.id),
-      name: String(routeObj.name),
-      archetype: String(routeObj.archetype),
-      description: String(routeObj.description || ''),
-      requiredCards: (routeObj.requiredCards as string[]).map(String),
-      steps: (routeObj.steps as Record<string, unknown>[]).map((step): ComboStep => ({
-        id: Number(step.id),
-        action: String(step.action || ''),
-        cardId: String(step.cardId || ''),
-        responses: parseStepResponses(step),
-        stateMutations: parseStateMutations(step.stateMutations)
-      })),
-      tags: Array.isArray(routeObj.tags) ? routeObj.tags.map(String) : [],
-      endBoard: parseEndBoard(routeObj.endBoard)
-    },
-    handContext: resolvedHandContext
+    route,
+    handContext: parseHandContextRaw(data.handContext)
   };
 }
