@@ -460,23 +460,23 @@ export default function Home() {
       }
 
       if (successCount === 0 && files.length > 0) {
-        alert('Failed to import any combo files. Please check the console for details.');
+        alert("Couldn't import any of those files. Make sure you're selecting a .json combo file exported from this app.");
         return;
       }
-      
+
       // Prevent duplicate IDs in current list
       setCustomRoutes(prev => {
         const combined = [...newRoutes, ...prev];
         const unique = new Map(combined.map(r => [r.id, r]));
         return Array.from(unique.values());
       });
-      
+
       setHandContexts(newContexts);
-      
-      alert(`Imported ${successCount} combo(s) successfully!`);
+
+      alert(`Imported ${successCount} combo${successCount !== 1 ? 's' : ''} successfully!`);
     } catch (e: unknown) {
-      const err = e instanceof Error ? e.message : 'Unknown error';
-      alert(`Import process failed: ${err}`);
+      const err = e instanceof Error ? e.message : 'Something unexpected went wrong.';
+      alert(`Couldn't import that file: ${err}`);
     }
   };
 
@@ -586,9 +586,10 @@ export default function Home() {
                   Deck List Visualizer
                 </h3>
               </div>
-              <DeckGrid 
-                deck={deckList} 
-                highlightedCards={getHighlightedCards()} 
+              <DeckGrid
+                deck={deckList}
+                highlightedCards={getHighlightedCards()}
+                cardDetails={cardDetails}
                 onCardMouseEnter={handleCardMouseEnter}
                 onCardMouseLeave={handleCardMouseLeave}
                 onCardMouseMove={handleCardMouseMove}
@@ -611,6 +612,7 @@ export default function Home() {
                 customRouteIds={new Set(customRoutes.map(r => r.id))}
                 deckCardIds={new Set([...deckList.main, ...deckList.extra, ...deckList.side])}
                 deck={deckList}
+                cardDetails={cardDetails}
               />
             </div>
           </div>
@@ -635,6 +637,7 @@ export default function Home() {
             }
             onShare={() => handleShareCombo(selectedRoute)}
             justCopied={justCopiedRouteId === selectedRoute.id}
+            cardDetails={cardDetails}
             onCardMouseEnter={handleCardMouseEnter}
             onCardMouseLeave={handleCardMouseLeave}
             onCardMouseMove={handleCardMouseMove}
@@ -651,6 +654,7 @@ export default function Home() {
               setView('deck');
             }}
             onCancel={() => setView('deck')}
+            cardDetails={cardDetails}
             onCardMouseEnter={handleCardMouseEnter}
             onCardMouseLeave={handleCardMouseLeave}
             onCardMouseMove={handleCardMouseMove}
@@ -686,6 +690,7 @@ export default function Home() {
             handleStartCombo(route);
           }}
           isGenerating={isAiGenerating}
+          cardDetails={cardDetails}
           onCardMouseEnter={handleCardMouseEnter}
           onCardMouseLeave={handleCardMouseLeave}
           onCardMouseMove={handleCardMouseMove}
@@ -702,6 +707,7 @@ export default function Home() {
           isGenerating={isAiGenerating}
           aiError={aiError}
           hasAiConfig={settings.useDemo || (settings.customApiKey.trim() !== '')}
+          cardDetails={cardDetails}
           onSelectCombo={(route) => {
             setIsComboSolverOpen(false);
             handleStartCombo(route);

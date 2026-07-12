@@ -94,11 +94,19 @@ export function ComboGenerator({ isGenerating, error, onClearError }: ComboGener
 
             <div className="space-y-2">
               <h3 className="font-sans text-base font-bold text-zinc-100">
-                Generation Failed
+                The AI couldn&apos;t generate a combo
               </h3>
-              <p className="text-xs text-zinc-400 leading-relaxed font-mono bg-zinc-900/50 p-3 rounded-lg border border-zinc-900 max-h-[160px] overflow-y-auto text-left whitespace-pre-wrap">
-                {error}
+              <p className="text-xs text-zinc-400 leading-relaxed">
+                You can try again, or switch AI providers in Settings if this keeps happening.
               </p>
+              <details className="text-left">
+                <summary className="text-[10px] text-zinc-600 hover:text-zinc-400 cursor-pointer select-none">
+                  Show technical details
+                </summary>
+                <p className="mt-2 text-xs text-zinc-400 leading-relaxed font-mono bg-zinc-900/50 p-3 rounded-lg border border-zinc-900 max-h-[160px] overflow-y-auto whitespace-pre-wrap">
+                  {error}
+                </p>
+              </details>
             </div>
 
             <button

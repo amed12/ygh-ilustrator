@@ -134,37 +134,37 @@ export function SettingsModal({ isOpen, onClose, settings, onSave }: SettingsMod
         <div className="mt-6 space-y-6">
           {/* Mode Toggle */}
           <div className="space-y-2">
-            <label className="block text-xs font-mono uppercase tracking-wider text-zinc-400">
-              API KEY ROUTING
+            <label className="block text-xs font-semibold text-zinc-400">
+              AI Mode
             </label>
             <div className="grid grid-cols-2 gap-2 rounded-lg bg-zinc-900/50 p-1 border border-zinc-900">
               <button
                 type="button"
                 className={`rounded-md py-2 text-xs font-medium transition-all ${
-                  useDemo 
-                    ? 'bg-indigo-600 text-white shadow-md' 
+                  useDemo
+                    ? 'bg-indigo-600 text-white shadow-md'
                     : 'text-zinc-400 hover:text-zinc-200'
                 }`}
                 onClick={() => setUseDemo(true)}
               >
-                Demo Mode (Free)
+                Use Free Demo
               </button>
               <button
                 type="button"
                 className={`rounded-md py-2 text-xs font-medium transition-all ${
-                  !useDemo 
-                    ? 'bg-indigo-600 text-white shadow-md' 
+                  !useDemo
+                    ? 'bg-indigo-600 text-white shadow-md'
                     : 'text-zinc-400 hover:text-zinc-200'
                 }`}
                 onClick={() => setUseDemo(false)}
               >
-                Custom Key Mode
+                Use My Own API Key
               </button>
             </div>
             <p className="text-[11px] text-zinc-500 leading-normal">
-              {useDemo 
-                ? 'Uses the serverless Gemini 2.5 Flash demo keys. Subject to global rate limits.' 
-                : 'Directly triggers requests from your browser to the selected LLM provider. Keys are saved strictly in LocalStorage.'}
+              {useDemo
+                ? "Works out of the box — no setup needed. Shared with other visitors, so it's rate-limited and may occasionally be slow or unavailable."
+                : 'Sends requests straight from your browser to the AI provider you choose below, using your own API key. The key is only ever saved in your browser (LocalStorage) — never sent to us.'}
             </p>
           </div>
 
@@ -172,8 +172,8 @@ export function SettingsModal({ isOpen, onClose, settings, onSave }: SettingsMod
             <>
               {/* Provider */}
               <div className="space-y-2">
-                <label className="block text-xs font-mono uppercase tracking-wider text-zinc-400">
-                  AI PROVIDER
+                <label className="block text-xs font-semibold text-zinc-400">
+                  AI Provider
                 </label>
                 <select
                   value={provider}
@@ -182,7 +182,6 @@ export function SettingsModal({ isOpen, onClose, settings, onSave }: SettingsMod
                 >
                   <option value="gemini">Google Gemini</option>
                   <option value="openai">OpenAI</option>
-                  <option value="anthropic">Anthropic (Claude)</option>
                   <option value="deepseek">DeepSeek (Direct)</option>
                   <option value="openrouter">OpenRouter</option>
                 </select>
@@ -190,8 +189,8 @@ export function SettingsModal({ isOpen, onClose, settings, onSave }: SettingsMod
 
               {/* Model */}
               <div className="space-y-2">
-                <label className="block text-xs font-mono uppercase tracking-wider text-zinc-400">
-                  MODEL SELECTION {isLoadingModels && <span className="text-indigo-400 animate-pulse text-[10px] ml-1">(Loading OpenRouter models...)</span>}
+                <label className="block text-xs font-semibold text-zinc-400">
+                  Model {isLoadingModels && <span className="text-indigo-400 animate-pulse text-[10px] ml-1">(Loading OpenRouter models...)</span>}
                 </label>
                 <select
                   value={model}

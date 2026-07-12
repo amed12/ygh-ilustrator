@@ -2,11 +2,16 @@
 
 import React, { useState } from 'react';
 import { CARD_REGISTRY } from '../data/cards';
+import { YGOPROCardDetails } from '../types';
 
 interface CardDisplayProps {
   cardId: string;
   size?: 'xs' | 'sm' | 'md' | 'lg';
   glow?: boolean;
+  /** Live card data fetched from YGOPRODeck for this specific card, if available — takes
+   * priority over the static CARD_REGISTRY so any deck (not just the hardcoded sample) shows
+   * a real card name instead of "Card #12345". */
+  details?: YGOPROCardDetails;
   onMouseEnter?: (cardId: string, e: React.MouseEvent) => void;
   onMouseLeave?: () => void;
   onMouseMove?: (e: React.MouseEvent) => void;
@@ -16,6 +21,7 @@ export function CardDisplay({
   cardId,
   size = 'md',
   glow = false,
+  details,
   onMouseEnter,
   onMouseLeave,
   onMouseMove
@@ -25,13 +31,15 @@ export function CardDisplay({
 
   const isReserved = ['TOKEN', 'OPPONENT', 'NONE'].includes(cardId.toUpperCase());
 
-  const cardInfo = isReserved 
+  const cardInfo = isReserved
     ? { id: cardId, name: `Generic Action (${cardId})`, imageUrl: '' }
-    : CARD_REGISTRY[cardId] || {
-        id: cardId,
-        name: `Card #${cardId}`,
-        imageUrl: `https://images.ygoprodeck.com/images/cards/${cardId}.jpg`
-      };
+    : details
+      ? { id: cardId, name: details.name, imageUrl: `https://images.ygoprodeck.com/images/cards/${cardId}.jpg` }
+      : CARD_REGISTRY[cardId] || {
+          id: cardId,
+          name: `Card #${cardId}`,
+          imageUrl: `https://images.ygoprodeck.com/images/cards/${cardId}.jpg`
+        };
 
   const sizeClasses = {
     xs: 'w-10 h-14 text-[8px]',
@@ -87,7 +95,7 @@ export function CardDisplay({
             {cardInfo.name}
           </div>
           <div className="text-[8px] uppercase tracking-wider text-indigo-400 font-mono">
-            {cardInfo.id in CARD_REGISTRY ? 'Database Match' : 'Unknown Card'}
+            {details || cardInfo.id in CARD_REGISTRY ? 'Database Match' : 'Unknown Card'}
           </div>
         </div>
       )}

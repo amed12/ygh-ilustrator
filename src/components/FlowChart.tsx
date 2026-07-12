@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ComboRoute, ComboStep } from '../types';
+import { ComboRoute, ComboStep, YGOPROCardDetails } from '../types';
 import { CARD_REGISTRY } from '../data/cards';
 import { ArrowDown, ArrowRight, GitBranch } from '@phosphor-icons/react';
 
@@ -9,9 +9,15 @@ interface FlowChartProps {
   route: ComboRoute;
   currentStepId: number;
   history: { step: ComboStep; trigger: string }[];
+  cardDetails?: Record<string, YGOPROCardDetails>;
 }
 
-export function FlowChart({ route, currentStepId, history }: FlowChartProps) {
+export function FlowChart({ route, currentStepId, history, cardDetails = {} }: FlowChartProps) {
+  const resolveCardShortName = (cardId: string): string => {
+    const fullName = cardDetails[cardId]?.name || CARD_REGISTRY[cardId]?.name;
+    if (!fullName) return `#${cardId}`;
+    return fullName.split('-').pop()?.trim().substring(0, 10) || fullName.substring(0, 10);
+  };
   const historySet = new Set(history.map(h => h.step.id));
   const successPointers = new Set(history.filter(h => h.trigger === 'success').map(h => h.step.id));
   
@@ -109,7 +115,7 @@ export function FlowChart({ route, currentStepId, history }: FlowChartProps) {
                         </span>
                       </div>
                       <span className="text-[9px] font-mono text-zinc-600 shrink-0 hidden sm:block">
-                        {CARD_REGISTRY[step.cardId]?.name.split('-').pop()?.trim().substring(0, 10) || 'Card'}
+                        {resolveCardShortName(step.cardId)}
                       </span>
                     </div>
                   </div>

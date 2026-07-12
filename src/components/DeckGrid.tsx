@@ -2,12 +2,13 @@
 
 import React, { useState } from 'react';
 import { CardDisplay } from './CardDisplay';
-import { DeckList } from '../types';
+import { DeckList, YGOPROCardDetails } from '../types';
 import { SquareHalf } from '@phosphor-icons/react';
 
 interface DeckGridProps {
   deck: DeckList;
   highlightedCards?: string[]; // Cards used in the current combo
+  cardDetails?: Record<string, YGOPROCardDetails>;
   onCardMouseEnter?: (cardId: string, e: React.MouseEvent) => void;
   onCardMouseLeave?: () => void;
   onCardMouseMove?: (e: React.MouseEvent) => void;
@@ -16,6 +17,7 @@ interface DeckGridProps {
 export function DeckGrid({
   deck,
   highlightedCards = [],
+  cardDetails = {},
   onCardMouseEnter,
   onCardMouseLeave,
   onCardMouseMove
@@ -105,10 +107,11 @@ export function DeckGrid({
               const shouldHighlight = highlightSet.has(cardId);
               return (
                 <div key={`${cardId}-${index}`} className="relative">
-                  <CardDisplay 
-                    cardId={cardId} 
-                    size="sm" 
-                    glow={shouldHighlight} 
+                  <CardDisplay
+                    cardId={cardId}
+                    size="sm"
+                    glow={shouldHighlight}
+                    details={cardDetails[cardId]}
                     onMouseEnter={onCardMouseEnter}
                     onMouseLeave={onCardMouseLeave}
                     onMouseMove={onCardMouseMove}

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { ComboRoute } from '../types';
+import { ComboRoute, YGOPROCardDetails } from '../types';
 import { CardDisplay } from './CardDisplay';
 import { TurnPosition } from '../services/prompts';
 import {
@@ -17,6 +17,7 @@ interface ComboSolverProps {
   isGenerating: boolean;
   aiError: string | null;
   hasAiConfig: boolean;
+  cardDetails?: Record<string, YGOPROCardDetails>;
   onSelectCombo: (route: ComboRoute) => void;
   onGenerateAI: () => void;
   onClose: () => void;
@@ -39,6 +40,7 @@ function ComboCard({
   handCards,
   isAI,
   onSelect,
+  cardDetails = {},
   onCardMouseEnter,
   onCardMouseLeave,
   onCardMouseMove,
@@ -47,6 +49,7 @@ function ComboCard({
   handCards: string[];
   isAI: boolean;
   onSelect: () => void;
+  cardDetails?: Record<string, YGOPROCardDetails>;
   onCardMouseEnter?: (cardId: string, e: React.MouseEvent) => void;
   onCardMouseLeave?: () => void;
   onCardMouseMove?: (e: React.MouseEvent) => void;
@@ -95,7 +98,7 @@ function ComboCard({
                 onMouseLeave={onCardMouseLeave}
                 onMouseMove={onCardMouseMove}
               >
-                <CardDisplay cardId={id} size="xs" glow />
+                <CardDisplay cardId={id} size="xs" glow details={cardDetails[id]} />
               </div>
             ))}
           </div>
@@ -167,6 +170,7 @@ export function ComboSolver({
   isGenerating,
   aiError,
   hasAiConfig,
+  cardDetails = {},
   onSelectCombo,
   onGenerateAI,
   onClose,
@@ -248,7 +252,7 @@ export function ComboSolver({
                 onMouseMove={onCardMouseMove}
                 className="shrink-0"
               >
-                <CardDisplay cardId={id} size="xs" />
+                <CardDisplay cardId={id} size="xs" details={cardDetails[id]} />
               </div>
             ))}
           </div>
@@ -256,9 +260,17 @@ export function ComboSolver({
 
         {/* AI Error Banner */}
         {aiError && (
-          <div className="border-b border-red-900/40 bg-red-950/20 px-6 py-3 shrink-0 flex items-center gap-2">
-            <WarningCircle size={16} className="text-red-400 shrink-0" weight="duotone" />
-            <p className="text-xs text-red-300">{aiError}</p>
+          <div className="border-b border-red-900/40 bg-red-950/20 px-6 py-3 shrink-0">
+            <div className="flex items-center gap-2">
+              <WarningCircle size={16} className="text-red-400 shrink-0" weight="duotone" />
+              <p className="text-xs text-red-300">The AI couldn&apos;t generate a combo. You can try again below.</p>
+            </div>
+            <details className="mt-1.5 pl-6">
+              <summary className="text-[10px] text-zinc-600 hover:text-zinc-400 cursor-pointer select-none">
+                Show technical details
+              </summary>
+              <p className="mt-1 text-[10px] text-zinc-500 font-mono whitespace-pre-wrap break-words">{aiError}</p>
+            </details>
           </div>
         )}
 
@@ -283,6 +295,7 @@ export function ComboSolver({
                     handCards={handCards}
                     isAI={false}
                     onSelect={() => onSelectCombo(route)}
+                    cardDetails={cardDetails}
                     onCardMouseEnter={onCardMouseEnter}
                     onCardMouseLeave={onCardMouseLeave}
                     onCardMouseMove={onCardMouseMove}
@@ -310,6 +323,7 @@ export function ComboSolver({
                     handCards={handCards}
                     isAI={true}
                     onSelect={() => onSelectCombo(route)}
+                    cardDetails={cardDetails}
                     onCardMouseEnter={onCardMouseEnter}
                     onCardMouseLeave={onCardMouseLeave}
                     onCardMouseMove={onCardMouseMove}

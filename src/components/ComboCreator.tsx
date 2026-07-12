@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { DeckList, ComboRoute, ComboStep, ComboResponse, EndBoard } from '../types';
+import { DeckList, ComboRoute, ComboStep, ComboResponse, EndBoard, YGOPROCardDetails } from '../types';
 import { CARD_REGISTRY } from '../data/cards';
 import { CardDisplay } from './CardDisplay';
 import { X, Plus, Trash, Sparkle, ArrowLeft, FloppyDisk, DownloadSimple } from '@phosphor-icons/react';
@@ -11,6 +11,7 @@ interface ComboCreatorProps {
   defaultArchetype?: string;
   onSave: (route: ComboRoute) => void;
   onCancel: () => void;
+  cardDetails?: Record<string, YGOPROCardDetails>;
   onCardMouseEnter?: (cardId: string, e: React.MouseEvent) => void;
   onCardMouseLeave?: () => void;
   onCardMouseMove?: (e: React.MouseEvent) => void;
@@ -21,6 +22,7 @@ export function ComboCreator({
   defaultArchetype = '',
   onSave,
   onCancel,
+  cardDetails = {},
   onCardMouseEnter,
   onCardMouseLeave,
   onCardMouseMove
@@ -82,10 +84,10 @@ export function ComboCreator({
     const ids = Array.from(new Set([...deck.main, ...deck.extra]));
     return ids.map(id => ({
       id,
-      name: CARD_REGISTRY[id]?.name || `Card #${id}`,
+      name: cardDetails[id]?.name || CARD_REGISTRY[id]?.name || `Card #${id}`,
       isExtra: deck.extra.includes(id)
     }));
-  }, [deck]);
+  }, [deck, cardDetails]);
 
   const addTag = () => {
     if (tagInput.trim() && !tags.includes(tagInput.trim().toLowerCase())) {
@@ -410,10 +412,11 @@ export function ComboCreator({
                           : 'hover:ring-1 hover:ring-zinc-705'
                       }`}
                     >
-                      <CardDisplay 
-                        cardId={entry.id} 
-                        size="sm" 
-                        glow={isSelected} 
+                      <CardDisplay
+                        cardId={entry.id}
+                        size="sm"
+                        glow={isSelected}
+                        details={cardDetails[entry.id]}
                         onMouseEnter={onCardMouseEnter}
                         onMouseLeave={onCardMouseLeave}
                         onMouseMove={onCardMouseMove}
@@ -503,6 +506,7 @@ export function ComboCreator({
                         <CardDisplay
                           cardId={step.cardId}
                           size="xs"
+                          details={cardDetails[step.cardId]}
                           onMouseEnter={onCardMouseEnter}
                           onMouseLeave={onCardMouseLeave}
                           onMouseMove={onCardMouseMove}
@@ -765,6 +769,7 @@ export function ComboCreator({
                       <CardDisplay
                         cardId={card.id}
                         size="sm"
+                        details={cardDetails[card.id]}
                         onMouseEnter={onCardMouseEnter}
                         onMouseLeave={onCardMouseLeave}
                         onMouseMove={onCardMouseMove}

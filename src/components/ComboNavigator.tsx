@@ -1,8 +1,9 @@
 'use client';
 
 import React from 'react';
-import { ComboRoute, ComboStep, ComboHandContext, ComboResponse } from '../types';
+import { ComboRoute, ComboStep, ComboHandContext, ComboResponse, YGOPROCardDetails } from '../types';
 import { CardDisplay } from './CardDisplay';
+import { CARD_REGISTRY } from '../data/cards';
 import { StepTimeline } from './StepTimeline';
 import { FlowChart } from './FlowChart';
 import { OpeningHandPanel } from './OpeningHandPanel';
@@ -22,6 +23,7 @@ interface ComboNavigatorProps {
   onShare?: () => void;
   justCopied?: boolean;
   onStepClick?: (historyIndex: number) => void;
+  cardDetails?: Record<string, YGOPROCardDetails>;
   onCardMouseEnter?: (cardId: string, e: React.MouseEvent) => void;
   onCardMouseLeave?: () => void;
   onCardMouseMove?: (e: React.MouseEvent) => void;
@@ -41,10 +43,16 @@ export function ComboNavigator({
   onShare,
   justCopied,
   onStepClick,
+  cardDetails = {},
   onCardMouseEnter,
   onCardMouseLeave,
   onCardMouseMove
 }: ComboNavigatorProps) {
+
+  const resolveCardName = (cardId: string): string => {
+    if (['TOKEN', 'OPPONENT', 'NONE'].includes(cardId.toUpperCase())) return cardId;
+    return cardDetails[cardId]?.name || CARD_REGISTRY[cardId]?.name || `Card #${cardId}`;
+  };
 
   const formatTriggerLabel = (trigger: string) => {
     return trigger.replace(/_/g, ' ').toUpperCase();
@@ -122,8 +130,9 @@ export function ComboNavigator({
         {/* Left Column: Timeline (Col 3) */}
         <div className="lg:col-span-3 space-y-4">
           <StepTimeline history={history} currentStep={currentStep} onStepClick={onStepClick} />
-          <OpeningHandPanel 
-            handContext={handContext} 
+          <OpeningHandPanel
+            handContext={handContext}
+            cardDetails={cardDetails}
             onCardMouseEnter={onCardMouseEnter}
             onCardMouseLeave={onCardMouseLeave}
             onCardMouseMove={onCardMouseMove}
@@ -140,17 +149,18 @@ export function ComboNavigator({
                 <span className="text-[10px] font-mono text-zinc-500 uppercase tracking-wider">
                   Instruction {progress.current} of {progress.total}
                 </span>
-                <span className="text-[10px] font-mono text-indigo-400 font-semibold uppercase tracking-wider">
-                  Card ID: {currentStep.cardId}
+                <span className="text-[10px] font-mono text-indigo-400 font-semibold uppercase tracking-wider truncate max-w-[60%]">
+                  {resolveCardName(currentStep.cardId)}
                 </span>
               </div>
 
               {/* Central Card Display with Glow */}
               <div className="flex justify-center py-2">
-                <CardDisplay 
-                  cardId={currentStep.cardId} 
-                  size="lg" 
-                  glow={true} 
+                <CardDisplay
+                  cardId={currentStep.cardId}
+                  size="lg"
+                  glow={true}
+                  details={cardDetails[currentStep.cardId]}
                   onMouseEnter={onCardMouseEnter}
                   onMouseLeave={onCardMouseLeave}
                   onMouseMove={onCardMouseMove}
@@ -267,7 +277,7 @@ export function ComboNavigator({
 
         {/* Right Column: FlowChart (Col 4) */}
         <div className="lg:col-span-4 space-y-4">
-          <FlowChart route={route} currentStepId={currentStep?.id || 0} history={history} />
+          <FlowChart route={route} currentStepId={currentStep?.id || 0} history={history} cardDetails={cardDetails} />
         </div>
       </div>
     </div>

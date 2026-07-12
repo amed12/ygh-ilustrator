@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { CardDisplay } from './CardDisplay';
-import { DeckList, ComboRoute } from '../types';
+import { DeckList, ComboRoute, YGOPROCardDetails } from '../types';
 import { TurnPosition } from '../services/prompts';
 import { CARD_REGISTRY } from '../data/cards';
 import { findPlayableRoutes } from '../engine/comboEngine';
@@ -16,6 +16,7 @@ interface HandSelectorProps {
   availableRoutes: ComboRoute[];
   onSelectCombo: (route: ComboRoute) => void;
   isGenerating: boolean;
+  cardDetails?: Record<string, YGOPROCardDetails>;
   onCardMouseEnter?: (cardId: string, e: React.MouseEvent) => void;
   onCardMouseLeave?: () => void;
   onCardMouseMove?: (e: React.MouseEvent) => void;
@@ -29,6 +30,7 @@ export function HandSelector({
   availableRoutes,
   onSelectCombo,
   isGenerating,
+  cardDetails = {},
   onCardMouseEnter,
   onCardMouseLeave,
   onCardMouseMove
@@ -110,7 +112,7 @@ export function HandSelector({
             <div>
               <h2 className="font-sans text-base font-bold text-zinc-100">Select Your Opening Hand</h2>
               <p className="text-xs text-zinc-500 mt-0.5">
-                Pick the cards in your hand, then generate a combo. No card limit — include Maxx &quot;C&quot; draws too!
+                Pick the cards in your hand, then generate a combo. No card limit — you can include extra cards drawn from effects like Maxx &quot;C&quot; too.
               </p>
             </div>
           </div>
@@ -129,6 +131,7 @@ export function HandSelector({
           <div className="flex gap-1 bg-zinc-900/60 p-1 rounded-lg border border-zinc-800">
             <button
               onClick={() => setTurnPosition('going-first')}
+              title="You take the first turn: you set up your board, but don't get to attack this turn."
               className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all ${
                 turnPosition === 'going-first'
                   ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30 shadow-sm'
@@ -140,6 +143,7 @@ export function HandSelector({
             </button>
             <button
               onClick={() => setTurnPosition('going-second')}
+              title="Your opponent already has a board: you get to attack this turn, but need to break through what they set up."
               className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-xs font-semibold transition-all ${
                 turnPosition === 'going-second'
                   ? 'bg-violet-500/15 text-violet-400 border border-violet-500/30 shadow-sm'
@@ -203,10 +207,11 @@ export function HandSelector({
                   className="relative shrink-0 cursor-pointer group"
                   onClick={() => removeCard(index)}
                 >
-                  <CardDisplay 
-                    cardId={cardId} 
-                    size="xs" 
-                    glow 
+                  <CardDisplay
+                    cardId={cardId}
+                    size="xs"
+                    glow
+                    details={cardDetails[cardId]}
                     onMouseEnter={onCardMouseEnter}
                     onMouseLeave={onCardMouseLeave}
                     onMouseMove={onCardMouseMove}
@@ -245,10 +250,11 @@ export function HandSelector({
                       : 'hover:ring-1 hover:ring-zinc-700'
                   }`}
                 >
-                  <CardDisplay 
-                    cardId={entry.id} 
-                    size="sm" 
-                    glow={isSelected} 
+                  <CardDisplay
+                    cardId={entry.id}
+                    size="sm"
+                    glow={isSelected}
+                    details={cardDetails[entry.id]}
                     onMouseEnter={onCardMouseEnter}
                     onMouseLeave={onCardMouseLeave}
                     onMouseMove={onCardMouseMove}
@@ -299,14 +305,20 @@ export function HandSelector({
         <div className="border-t border-zinc-900 px-6 py-4 flex items-center justify-between shrink-0">
           <div className="text-xs text-zinc-500">
             {turnPosition === 'going-first' ? (
-              <span className="flex items-center gap-1.5">
+              <span
+                className="flex items-center gap-1.5"
+                title="The AI will try to set up the strongest possible defensive board for your opponent's turn."
+              >
                 <SunHorizon size={14} className="text-amber-400" />
-                Build end board with max negates
+                Set up the strongest defense
               </span>
             ) : (
-              <span className="flex items-center gap-1.5">
+              <span
+                className="flex items-center gap-1.5"
+                title="The AI will try to break your opponent's board and win this turn if possible (OTK = One-Turn Kill)."
+              >
                 <MoonStars size={14} className="text-violet-400" />
-                Break board &amp; push for OTK
+                Break their board &amp; try to win this turn
               </span>
             )}
           </div>

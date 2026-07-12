@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { UploadSimple, FileText, ArrowRight, Warning } from '@phosphor-icons/react';
+import { UploadSimple, ArrowRight, Warning, Sparkle, Info } from '@phosphor-icons/react';
 import { parseDeck } from '../parser/ydk';
 import { DeckList } from '../types';
 
@@ -54,7 +54,7 @@ export function DeckImporter({ onImport }: DeckImporterProps) {
     try {
       const parsed = parseDeck(text);
       if (parsed.main.length === 0 && parsed.extra.length === 0) {
-        throw new Error('Parsed deck list is empty. Please verify card passcodes.');
+        throw new Error('No cards were found in that deck data. Please check the file or link and try again.');
       }
       onImport(parsed);
     } catch (e: unknown) {
@@ -123,11 +123,75 @@ export function DeckImporter({ onImport }: DeckImporterProps) {
       {/* Title & Slogan */}
       <div className="text-center space-y-2">
         <h1 className="font-sans text-3xl font-extrabold tracking-tight text-zinc-100 sm:text-4xl">
-          Yu-Gi-Oh! Combo State Engine
+          Yu-Gi-Oh! Combo Trainer
         </h1>
         <p className="text-sm text-zinc-400 max-w-md mx-auto">
-          Prevent misplays by simulating and practicing branching deck combos under negated conditions.
+          Practice your deck&apos;s best opening plays, step by step — including what to do when your opponent interrupts you.
         </p>
+      </div>
+
+      {/* How it works */}
+      <div className="grid grid-cols-3 gap-2 text-center">
+        {[
+          { step: '1', text: 'Load a deck' },
+          { step: '2', text: 'Pick a combo' },
+          { step: '3', text: 'Practice it move-by-move' }
+        ].map(({ step, text }) => (
+          <div key={step} className="rounded-lg border border-zinc-900 bg-zinc-950/40 px-2 py-3">
+            <div className="mx-auto mb-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-zinc-900 text-[10px] font-bold text-zinc-400">
+              {step}
+            </div>
+            <p className="text-[11px] text-zinc-500 leading-tight">{text}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Try a Sample Deck — promoted as the primary path for first-time visitors */}
+      <div className="rounded-xl border border-emerald-900/60 bg-emerald-950/10 p-4 space-y-3">
+        <div className="flex items-start gap-3">
+          <div className="rounded bg-emerald-500/10 p-2 text-emerald-400 shrink-0">
+            <Sparkle size={18} weight="duotone" />
+          </div>
+          <div>
+            <h4 className="text-xs font-semibold text-zinc-200">New here? Try a sample deck</h4>
+            <p className="text-[11px] text-zinc-400 leading-relaxed mt-0.5">
+              No deck file needed — load a ready-made Raidraptor deck to see how combo practice works.
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setInputText(SAMPLE_RAIDRAPTOR_YDK);
+              handleImport(SAMPLE_RAIDRAPTOR_YDK);
+            }}
+            className="flex items-center justify-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 py-2.5 px-3 text-xs font-semibold text-white transition-all active:scale-[0.98]"
+          >
+            <span>Try Sample Deck</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setInputText(SAMPLE_RAIDRAPTOR_YDKE);
+              handleImport(SAMPLE_RAIDRAPTOR_YDKE);
+            }}
+            className="flex items-center justify-center gap-2 rounded-lg border border-emerald-900/60 hover:bg-emerald-950/30 py-2.5 px-3 text-xs font-semibold text-emerald-300 transition-all active:scale-[0.98]"
+            title="Same sample deck, loaded from a ydke:// link instead of a .ydk file — useful for testing that format"
+          >
+            <span>Try via ydke:// Link</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Divider */}
+      <div className="relative py-1">
+        <div className="absolute inset-0 flex items-center">
+          <div className="w-full border-t border-zinc-900" />
+        </div>
+        <div className="relative flex justify-center text-xs font-mono uppercase tracking-wider">
+          <span className="bg-zinc-950 px-3 text-zinc-600">Or import your own deck</span>
+        </div>
       </div>
 
       {/* Drag & Drop Area */}
@@ -156,7 +220,7 @@ export function DeckImporter({ onImport }: DeckImporterProps) {
           </div>
           <div className="space-y-1">
             <p className="text-sm font-semibold text-zinc-200">
-              Drag & drop your .ydk file here
+              Drag & drop your deck export here
             </p>
             <p className="text-xs text-zinc-500">
               Or <button type="button" onClick={triggerFileInput} className="text-indigo-400 hover:underline">browse files</button> from your device
@@ -168,9 +232,13 @@ export function DeckImporter({ onImport }: DeckImporterProps) {
       {/* Text Area Input */}
       <form onSubmit={handleTextSubmit} className="space-y-4">
         <div className="space-y-2">
-          <label className="block text-xs font-mono uppercase tracking-wider text-zinc-400">
-            PASTE DECK DATA (YDK OR YDKE LINK)
+          <label className="block text-xs font-semibold text-zinc-400">
+            Or paste your deck here
           </label>
+          <div className="flex items-start gap-1.5 text-[10px] text-zinc-600 leading-relaxed">
+            <Info size={12} className="mt-0.5 shrink-0" />
+            <span>Accepts a .ydk file&apos;s text, or a ydke:// link. These are exported from tools like EDOPro or the YGOPRODeck deck builder.</span>
+          </div>
           <div className="relative">
             <textarea
               value={inputText}
@@ -195,48 +263,11 @@ export function DeckImporter({ onImport }: DeckImporterProps) {
             type="submit"
             className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white hover:bg-indigo-500 transition-all active:scale-[0.98] shadow-md shadow-indigo-600/10"
           >
-            <span>Parse & Load Deck</span>
+            <span>Load My Deck</span>
             <ArrowRight size={16} />
           </button>
         </div>
       </form>
-
-      {/* Preloaded Samples Divider */}
-      <div className="relative py-4">
-        <div className="absolute inset-0 flex items-center">
-          <div className="w-full border-t border-zinc-900" />
-        </div>
-        <div className="relative flex justify-center text-xs font-mono uppercase tracking-wider">
-          <span className="bg-zinc-950 px-3 text-zinc-600">Quick Testing</span>
-        </div>
-      </div>
-
-      {/* Sample Buttons */}
-      <div className="grid grid-cols-2 gap-3">
-        <button
-          type="button"
-          onClick={() => {
-            setInputText(SAMPLE_RAIDRAPTOR_YDK);
-            handleImport(SAMPLE_RAIDRAPTOR_YDK);
-          }}
-          className="flex items-center justify-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/20 hover:bg-zinc-900/50 py-3 px-4 text-xs font-semibold text-zinc-300 transition-all active:scale-[0.98]"
-        >
-          <FileText size={16} />
-          <span>Load Raidraptor YDK</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => {
-            setInputText(SAMPLE_RAIDRAPTOR_YDKE);
-            handleImport(SAMPLE_RAIDRAPTOR_YDKE);
-          }}
-          className="flex items-center justify-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/20 hover:bg-zinc-900/50 py-3 px-4 text-xs font-semibold text-zinc-300 transition-all active:scale-[0.98]"
-        >
-          <FileText size={16} />
-          <span>Load Raidraptor YDKE</span>
-        </button>
-      </div>
     </div>
   );
 }

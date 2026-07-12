@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef } from 'react';
-import { ComboRoute, DeckList } from '../types';
+import { ComboRoute, DeckList, YGOPROCardDetails } from '../types';
 import { CARD_REGISTRY } from '../data/cards';
 import { probabilityToOpenCombo, probabilityToBrick } from '../engine/probability';
 import { Play, Tag, Lightbulb, Sparkle, UploadSimple, DownloadSimple, ShareNetwork, Plus, ChartBar } from '@phosphor-icons/react';
@@ -20,6 +20,7 @@ interface ComboSelectorProps {
   customRouteIds?: Set<string>;
   deckCardIds?: Set<string>;
   deck?: DeckList;
+  cardDetails?: Record<string, YGOPROCardDetails>;
 }
 
 export function ComboSelector({
@@ -35,7 +36,8 @@ export function ComboSelector({
   onCreateCombo,
   customRouteIds = new Set(),
   deckCardIds = new Set(),
-  deck
+  deck,
+  cardDetails = {}
 }: ComboSelectorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -129,7 +131,7 @@ export function ComboSelector({
                   if (missingCards.length === 0) return null;
                   
                   const missingCardNames = missingCards
-                    .map(id => CARD_REGISTRY[id]?.name || `Card #${id}`)
+                    .map(id => cardDetails[id]?.name || CARD_REGISTRY[id]?.name || `Card #${id}`)
                     .join(', ');
                     
                   return (

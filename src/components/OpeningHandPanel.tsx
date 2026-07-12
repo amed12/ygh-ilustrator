@@ -1,12 +1,13 @@
 'use client';
 
 import React from 'react';
-import { ComboHandContext } from '../types';
+import { ComboHandContext, YGOPROCardDetails } from '../types';
 import { CardDisplay } from './CardDisplay';
 import { Hand, SunHorizon, MoonStars, CalendarBlank } from '@phosphor-icons/react';
 
 interface OpeningHandPanelProps {
   handContext?: ComboHandContext;
+  cardDetails?: Record<string, YGOPROCardDetails>;
   onCardMouseEnter?: (cardId: string, e: React.MouseEvent) => void;
   onCardMouseLeave?: () => void;
   onCardMouseMove?: (e: React.MouseEvent) => void;
@@ -14,6 +15,7 @@ interface OpeningHandPanelProps {
 
 export function OpeningHandPanel({
   handContext,
+  cardDetails = {},
   onCardMouseEnter,
   onCardMouseLeave,
   onCardMouseMove
@@ -42,12 +44,18 @@ export function OpeningHandPanel({
 
         {/* Turn Position Badge */}
         {handContext.turnPosition === 'going-first' ? (
-          <span className="flex items-center gap-1 rounded bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[9px] font-semibold text-amber-400 font-mono uppercase tracking-wider">
+          <span
+            className="flex items-center gap-1 rounded bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[9px] font-semibold text-amber-400 font-mono uppercase tracking-wider"
+            title="You take the first turn: you get to set up your board, but you don't get to attack this turn."
+          >
             <SunHorizon size={10} weight="fill" />
             <span>Going First</span>
           </span>
         ) : (
-          <span className="flex items-center gap-1 rounded bg-violet-500/10 border border-violet-500/20 px-2 py-0.5 text-[9px] font-semibold text-violet-400 font-mono uppercase tracking-wider">
+          <span
+            className="flex items-center gap-1 rounded bg-violet-500/10 border border-violet-500/20 px-2 py-0.5 text-[9px] font-semibold text-violet-400 font-mono uppercase tracking-wider"
+            title="Your opponent went first and already has a board: you get to attack this turn, but you'll need to break through what they set up."
+          >
             <MoonStars size={10} weight="fill" />
             <span>Going Second</span>
           </span>
@@ -58,10 +66,11 @@ export function OpeningHandPanel({
       <div className="flex gap-2 overflow-x-auto pb-2 custom-scrollbar">
         {handContext.handCardIds.map((cardId, index) => (
           <div key={`hand-${cardId}-${index}`} className="relative shrink-0">
-            <CardDisplay 
-              cardId={cardId} 
-              size="xs" 
-              glow={false} 
+            <CardDisplay
+              cardId={cardId}
+              size="xs"
+              glow={false}
+              details={cardDetails[cardId]}
               onMouseEnter={onCardMouseEnter}
               onMouseLeave={onCardMouseLeave}
               onMouseMove={onCardMouseMove}
