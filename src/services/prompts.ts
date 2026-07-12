@@ -34,6 +34,21 @@ function formatCardBlock(id: string, details: YGOPROCardDetails | undefined, isC
   return `  - ID: ${id} | ${details.name}${typeLine}${statLine}${effectLine}`;
 }
 
+/**
+ * Real Yu-Gi-Oh turn-structure and rules constraints. LLMs reliably hallucinate illegal lines
+ * (double Normal Summons, reused hard-OPT effects, treating Xyz material as "in the GY") when
+ * only given card effect text — these rules are not derivable from a card's text alone.
+ */
+const RULES_ENFORCEMENT = `═══════════════════════════════════════════════════════
+RULES ENFORCEMENT (a route that violates any of these is INVALID, not just suboptimal):
+═══════════════════════════════════════════════════════
+1. ONE NORMAL SUMMON/SET PER TURN. Unless a card effect explicitly grants an additional Normal Summon, only one Normal Summon or Set may occur in the entire route.
+2. RESPECT ONCE-PER-TURN (OPT) RESTRICTIONS EXACTLY AS PRINTED. A "hard" OPT (worded "once per turn" and tied to the card itself, e.g. "You can only use this effect of "X" once per turn") cannot be used twice by two copies of the same card in one turn. A "soft" OPT (tied to the player, e.g. "once per turn, you can...") still limits that specific effect to one activation per turn even across different named cards sharing the restriction text. Do not activate the same OPT effect twice in a line.
+3. XYZ/LINK MATERIALS ARE NOT IN THE GRAVEYARD. A monster used as Xyz material is attached to that Xyz Monster, not sent to the GY — it cannot be targeted as "in the GY" until it is actually detached (and detaching is itself an action a step must perform). Do not reference a card as being in the GY unless a specific effect sent/discarded it there.
+4. COSTS MUST BE PAYABLE WHEN PAID. Do not use a card/resource as a cost (tribute, discard, banish, LP payment) if it was already spent, summoned as a different card, or otherwise unavailable at that point in the line.
+5. NIBIRU TIMING. Nibiru, the Primal Being can only be activated once 5 or more monsters have been Summoned (Normal or Special, either player) this turn — do not place a "nibiru" branch before the 5th Summon in the line.
+6. DO NOT FABRICATE INTERRUPTIONS. Every entry in endBoard.interruptions must correspond to an effect actually printed on a card that ends up on the field per the route — do not invent negates the deck doesn't have access to.`;
+
 interface PromptSections {
   handSection: string;
   extraSection: string;
@@ -80,17 +95,17 @@ function buildPromptSections(
   // ── TURN POSITION CONTEXT ─────────────────────────────────────────────────
   const turnContext = turnPosition === 'going-first'
     ? `GOING FIRST — No Battle Phase this turn.
-STRATEGIC OBJECTIVE: Build the most oppressive end board possible using ALL available hand cards without wasting any single card.
+STRATEGIC OBJECTIVE: Build the strongest end board this specific hand can honestly generate.
   - Identify which Extra Deck monsters provide Omni-Negates, targeted negates, floodgates, or protection.
-  - Prioritize stacking multiple interaction layers: ideally 2+ hard negates + 1 floodgate or 2+ bodies with disrupt effects.
-  - Every card in hand MUST be used in the combo — do not leave cards stranded.
+  - Use as many hand cards as the line legitimately supports, but do NOT force a card into the combo if doing so requires an illegal play, a cost that can't be paid, or reusing an OPT effect. Holding a card back (e.g. keeping a hand trap, or a card with no useful line) is a valid, honest outcome — say so in the description if you do.
+  - Only claim negates/disruption the deck can actually produce from this hand — do not inflate the end board with fabricated interruptions.
   - End board MUST specify each monster/trap on field and EXACTLY what it negates or prevents.`
     : `GOING SECOND — Opponent has an established board.
 STRATEGIC OBJECTIVE: Break the opponent's board, establish advantage, and push for OTK if ATK values allow.
   - Identify board-breaking tools in the hand (e.g. spells that destroy/banish, monsters with on-summon removal).
   - Calculate total ATK on field after board break to determine if OTK is achievable.
   - If OTK is not possible, prioritize establishing a defensive end board for the following turn.
-  - Every card in hand MUST be used — no idle cards.`;
+  - Use hand cards as the line legitimately supports — do not force in a card that has no legal, useful play this turn.`;
 
   // ── SIDE DECK STRATEGY CONTEXT ────────────────────────────────────────────
   const sideDeckStrategy = deckList.side.length > 0
@@ -134,10 +149,12 @@ Your job is to generate a complete, deeply-analyzed combo route with a fully-cra
 MISSION CRITICAL REQUIREMENTS (READ BEFORE ALL ELSE):
 ═══════════════════════════════════════════════════════
 1. READ EVERY CARD EFFECT below before generating anything. Do not rely on general knowledge — base all reasoning on the exact effect text provided.
-2. ALL HAND CARDS MUST BE USED. Every card in the opening hand must appear in the steps. Zero waste.
+2. USE HAND CARDS HONESTLY. Use every card whose inclusion is legal and useful — but do not force in a card via an illegal or nonsensical play just to avoid "wasting" it. It is correct to hold a card back if the line has no legal use for it.
 3. END BOARD MUST BE FULLY CRAFTED. Specify every monster and spell/trap on the field at the end, and EXACTLY what interruption each one provides (negate type, destruction, banish, etc).
-4. INTERRUPTIONS MUST BE SPECIFIC. Not "1 negate" — write "Raidraptor - Ultimate Falcon (unaffected by opponent's card effects, reduces all opponent monster ATK to 0 during opponent's turn)".
+4. INTERRUPTIONS MUST BE SPECIFIC AND REAL. Not "1 negate" — write "Raidraptor - Ultimate Falcon (unaffected by opponent's card effects, reduces all opponent monster ATK to 0 during opponent's turn)". Never invent a negate the resulting board doesn't actually have.
 5. BRANCHING FOR HAND TRAPS. Provide fallback branches for Ash Blossom, Maxx "C", Nibiru, and Impermanence on every key Special Summon.
+
+${RULES_ENFORCEMENT}
 
 ════════════════════════════════════════
 TURN POSITION & STRATEGIC OBJECTIVE:
@@ -268,10 +285,13 @@ MISSION CRITICAL REQUIREMENTS (READ BEFORE ALL ELSE):
 1. READ EVERY CARD EFFECT below before generating anything. Do not rely on general knowledge — base all reasoning on the exact effect text provided.
 2. IDENTIFY EVERY VIABLE STARTER in the hand. For each one, produce a separate, complete combo route that uses it as the entry point.
 3. AT LEAST 1 ROUTE, UP TO 4. If the hand only supports one real line, return an array with exactly 1 route — do not pad with redundant near-duplicates.
-4. WITHIN EACH ROUTE, ALL HAND CARDS MUST BE USED. Every card in the opening hand must appear in that route's steps. Zero waste per route.
+4. WITHIN EACH ROUTE, USE HAND CARDS HONESTLY. Use every card whose inclusion is legal and useful — but do not force in a card via an illegal or nonsensical play just to avoid "wasting" it. It is correct for a route to hold a card back if it has no legal use for it.
 5. END BOARD MUST BE FULLY CRAFTED for each route. Specify every monster and spell/trap on the field at the end, and EXACTLY what interruption each one provides (negate type, destruction, banish, etc).
-6. INTERRUPTIONS MUST BE SPECIFIC. Not "1 negate" — write "Raidraptor - Ultimate Falcon (unaffected by opponent's card effects, reduces all opponent monster ATK to 0 during opponent's turn)".
+6. INTERRUPTIONS MUST BE SPECIFIC AND REAL. Not "1 negate" — write "Raidraptor - Ultimate Falcon (unaffected by opponent's card effects, reduces all opponent monster ATK to 0 during opponent's turn)". Never invent a negate the resulting board doesn't actually have.
 7. BRANCHING FOR HAND TRAPS. Within each route, provide fallback branches for Ash Blossom, Maxx "C", Nibiru, and Impermanence on every key Special Summon.
+
+${RULES_ENFORCEMENT}
+(Rules enforcement applies independently to EVERY route in the array — a route that's illegal on its own is invalid even if other routes in the array are fine.)
 
 ════════════════════════════════════════
 TURN POSITION & STRATEGIC OBJECTIVE:
