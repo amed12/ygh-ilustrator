@@ -20,6 +20,16 @@ An interactive, static-first, and data-driven Yu-Gi-Oh combo visualizer and prac
 
 ---
 
+## 🤖 Creating Combos with an External AI
+
+Besides the built-in AI solver, you can ask any external AI chat (ChatGPT, Claude.ai,
+Gemini, etc.) to write a combo for you and import the result as a `.json` file — including
+importing many combos at once as a "Playbook". See **[docs/creating-combos-with-ai.md](docs/creating-combos-with-ai.md)**
+for the exact file format, a ready-to-copy prompt template, and two verified working
+examples.
+
+---
+
 ## 🛠️ Technology Stack
 
 * **Framework**: Next.js 16 (App Router)
