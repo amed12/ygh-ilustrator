@@ -16,7 +16,7 @@ import { TurnPosition } from '../services/prompts';
 import { ALL_COMBO_ROUTES } from '../data/combos';
 import { CARD_REGISTRY } from '../data/cards';
 import { findMatchingRoutes, findPlayableRoutes } from '../engine/comboEngine';
-import { generateAICombo, generateMultipleAICombos } from '../services/aiClient';
+import { generateMultipleAICombos } from '../services/aiClient';
 import { exportComboToFile, exportPlaybookToFile, importComboFromFile } from '../services/comboIO';
 import { buildShareUrl, readShareParamFromLocation, decodeShareableCombo, clearShareParamFromLocation } from '../services/shareLink';
 import { ComboSolver } from '../components/ComboSolver';
@@ -95,26 +95,29 @@ export default function Home() {
 
   // Restore the last session's deck/routes/card data on mount. Deferred to an effect
   // (rather than a useState initializer) so the first client render matches the
-  // statically-prerendered HTML and only hydrates from localStorage afterward.
+  // statically-prerendered HTML and only hydrates from localStorage afterward. The
+  // state updates themselves are further deferred via setTimeout so they don't run
+  // synchronously within the effect body (avoids the cascading-render lint/perf warning).
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(SESSION_STORAGE_KEY);
-      if (stored) {
-        const session: PersistedSession = JSON.parse(stored);
-        if (session.deckList) {
-          setDeckList(session.deckList);
-          setView('deck');
+    setTimeout(() => {
+      try {
+        const stored = localStorage.getItem(SESSION_STORAGE_KEY);
+        if (stored) {
+          const session: PersistedSession = JSON.parse(stored);
+          if (session.deckList) {
+            setDeckList(session.deckList);
+            setView('deck');
+          }
+          if (session.customRoutes?.length) setCustomRoutes(session.customRoutes);
+          if (session.handContexts) setHandContexts(session.handContexts);
+          if (session.cardDetails) setCardDetails(session.cardDetails);
         }
-        if (session.customRoutes?.length) setCustomRoutes(session.customRoutes);
-        if (session.handContexts) setHandContexts(session.handContexts);
-        if (session.cardDetails) setCardDetails(session.cardDetails);
+      } catch (e) {
+        console.error('Failed to restore saved session:', e);
+      } finally {
+        setIsSessionLoaded(true);
       }
-    } catch (e) {
-      console.error('Failed to restore saved session:', e);
-    } finally {
-      setIsSessionLoaded(true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, 0);
   }, []);
 
   // Tracks which route's share link was most recently copied, to flash "Copied!" feedback.
