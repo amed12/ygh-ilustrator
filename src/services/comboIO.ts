@@ -1,7 +1,7 @@
-import { ComboRoute, ComboHandContext, ComboExportFile, ComboStep, ComboResponse, StateMutations, EndBoard } from '../types';
+import { ComboRoute, ComboHandContext, ComboExportFile, PlaybookExportFile, ComboStep, ComboResponse, StateMutations, EndBoard } from '../types';
 
 /**
- * Serializes and triggers a browser download for a combo route.
+ * Serializes and triggers a browser download for a single combo route.
  */
 export function exportComboToFile(route: ComboRoute, handContext?: ComboHandContext): void {
   const exportData: ComboExportFile = {
@@ -14,28 +14,67 @@ export function exportComboToFile(route: ComboRoute, handContext?: ComboHandCont
   const jsonString = JSON.stringify(exportData, null, 2);
   const blob = new Blob([jsonString], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
-  
+
   const link = document.createElement('a');
   // Sanitize filename
   const safeName = route.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
   link.href = url;
   link.download = `ygo-combo-${safeName || route.id}.json`;
-  
+
   document.body.appendChild(link);
   link.click();
-  
+
   // Cleanup
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 }
 
 /**
- * Reads a File uploaded by the user and parses it as a ComboExportFile.
+ * Serializes and triggers a browser download for ALL given combo routes as a single
+ * Playbook file, so a user's accumulated custom/AI-generated combos can be backed up
+ * and re-imported together in one file instead of one at a time.
  */
-export function importComboFromFile(file: File): Promise<ComboExportFile> {
+export function exportPlaybookToFile(routes: ComboRoute[], handContexts: Record<string, ComboHandContext>): void {
+  const filteredContexts: Record<string, ComboHandContext> = {};
+  routes.forEach(r => {
+    if (handContexts[r.id]) {
+      filteredContexts[r.id] = handContexts[r.id];
+    }
+  });
+
+  const exportData: PlaybookExportFile = {
+    version: '1.0',
+    exportedAt: new Date().toISOString(),
+    routes,
+    handContexts: filteredContexts
+  };
+
+  const jsonString = JSON.stringify(exportData, null, 2);
+  const blob = new Blob([jsonString], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `playbook-ygo-combos-${dateStr}.json`;
+
+  document.body.appendChild(link);
+  link.click();
+
+  // Cleanup
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Reads a File uploaded by the user and parses it. Accepts either a single-combo
+ * ComboExportFile or a multi-combo PlaybookExportFile — always resolves to an array
+ * (length 1 for a single-combo file) so callers don't need to care which format was used.
+ */
+export function importComboFromFile(file: File): Promise<{ route: ComboRoute; handContext?: ComboHandContext }[]> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    
+
     reader.onload = (event) => {
       try {
         const text = event.target?.result as string;
@@ -44,12 +83,12 @@ export function importComboFromFile(file: File): Promise<ComboExportFile> {
         }
 
         const data = JSON.parse(text);
-        const validated = validateExportFile(data);
-        if (!validated) {
+        const resolved = parseImportedFile(data);
+        if (!resolved || resolved.length === 0) {
           throw new Error('Invalid combo file format. The file is corrupted or not a valid YGO Combo Engine export.');
         }
 
-        resolve(validated);
+        resolve(resolved);
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : 'JSON parse failure.';
         reject(new Error(`Failed to import combo: ${msg}`));
@@ -182,21 +221,45 @@ export function parseHandContextRaw(raw: unknown): ComboHandContext | undefined 
 }
 
 /**
- * Safe runtime validation typeguard for exported combo files.
+ * Safe runtime validation/parsing for an imported file. Accepts either shape:
+ *   - PlaybookExportFile: { version, routes: [...], handContexts?: { [routeId]: ... } }
+ *   - ComboExportFile:    { version, route: {...}, handContext?: {...} }
+ * Both are normalized to the same { route, handContext }[] shape, reusing
+ * parseComboRouteRaw/parseHandContextRaw so file import and share-link decoding
+ * (services/shareLink.ts) enforce identical structural guarantees.
  */
-function validateExportFile(raw: unknown): ComboExportFile | null {
+function parseImportedFile(raw: unknown): { route: ComboRoute; handContext?: ComboHandContext }[] | null {
   if (!raw || typeof raw !== 'object') return null;
   const data = raw as Record<string, unknown>;
-
   if (data.version !== '1.0') return null;
 
-  const route = parseComboRouteRaw(data.route);
-  if (!route) return null;
+  // Playbook format: multiple routes in one file.
+  if (Array.isArray(data.routes)) {
+    const handCtxsObj = (data.handContexts && typeof data.handContexts === 'object'
+      ? data.handContexts
+      : {}) as Record<string, unknown>;
 
-  return {
-    version: '1.0',
-    exportedAt: typeof data.exportedAt === 'string' ? data.exportedAt : new Date().toISOString(),
-    route,
-    handContext: parseHandContextRaw(data.handContext)
-  };
+    const results: { route: ComboRoute; handContext?: ComboHandContext }[] = [];
+    for (const rawRoute of data.routes) {
+      const route = parseComboRouteRaw(rawRoute);
+      if (!route) continue;
+      results.push({
+        route,
+        handContext: parseHandContextRaw(handCtxsObj[route.id])
+      });
+    }
+    return results;
+  }
+
+  // Single-combo format.
+  if (data.route && typeof data.route === 'object') {
+    const route = parseComboRouteRaw(data.route);
+    if (!route) return null;
+    return [{
+      route,
+      handContext: parseHandContextRaw(data.handContext)
+    }];
+  }
+
+  return null;
 }

@@ -17,7 +17,7 @@ import { ALL_COMBO_ROUTES } from '../data/combos';
 import { CARD_REGISTRY } from '../data/cards';
 import { findMatchingRoutes, findPlayableRoutes } from '../engine/comboEngine';
 import { generateAICombo, generateMultipleAICombos } from '../services/aiClient';
-import { exportComboToFile, importComboFromFile } from '../services/comboIO';
+import { exportComboToFile, exportPlaybookToFile, importComboFromFile } from '../services/comboIO';
 import { buildShareUrl, readShareParamFromLocation, decodeShareableCombo, clearShareParamFromLocation } from '../services/shareLink';
 import { ComboSolver } from '../components/ComboSolver';
 
@@ -421,6 +421,12 @@ export default function Home() {
     exportComboToFile(route, context);
   };
 
+  // Export all accumulated custom/AI-generated combos as a single Playbook file
+  const handleExportPlaybook = () => {
+    if (customRoutes.length === 0) return;
+    exportPlaybookToFile(customRoutes, handContexts);
+  };
+
   // Copies a shareable link to this combo (bundling the current deck, if any) to the clipboard.
   const handleShareCombo = async (route: ComboRoute) => {
     try {
@@ -448,12 +454,14 @@ export default function Home() {
 
       for (const file of files) {
         try {
-          const { route, handContext } = await importComboFromFile(file);
-          newRoutes.push(route);
-          if (handContext) {
-            newContexts[route.id] = handContext;
+          const importedItems = await importComboFromFile(file);
+          for (const item of importedItems) {
+            newRoutes.push(item.route);
+            if (item.handContext) {
+              newContexts[item.route.id] = item.handContext;
+            }
+            successCount++;
           }
-          successCount++;
         } catch (err) {
           console.error(`Import failed for ${file.name}:`, err);
         }
@@ -608,6 +616,7 @@ export default function Home() {
                 onShareRoute={handleShareCombo}
                 sharedRouteId={justCopiedRouteId}
                 onImportCombo={handleImportCombo}
+                onExportPlaybook={handleExportPlaybook}
                 onCreateCombo={() => setView('create-combo')}
                 customRouteIds={new Set(customRoutes.map(r => r.id))}
                 deckCardIds={new Set([...deckList.main, ...deckList.extra, ...deckList.side])}

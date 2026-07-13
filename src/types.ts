@@ -71,6 +71,13 @@ export interface ComboExportFile {
   handContext?: ComboHandContext;
 }
 
+export interface PlaybookExportFile {
+  version: '1.0';
+  exportedAt: string;
+  routes: ComboRoute[];
+  handContexts?: Record<string, ComboHandContext>;
+}
+
 export interface YGOPROCardDetails {
   id: string;
   name: string;

@@ -16,6 +16,7 @@ interface ComboSelectorProps {
   onShareRoute?: (route: ComboRoute) => void;
   sharedRouteId?: string | null;
   onImportCombo?: (files: File[]) => void;
+  onExportPlaybook?: () => void;
   onCreateCombo?: () => void;
   customRouteIds?: Set<string>;
   deckCardIds?: Set<string>;
@@ -33,6 +34,7 @@ export function ComboSelector({
   onShareRoute,
   sharedRouteId,
   onImportCombo,
+  onExportPlaybook,
   onCreateCombo,
   customRouteIds = new Set(),
   deckCardIds = new Set(),
@@ -229,21 +231,36 @@ export function ComboSelector({
         </button>
       </div>
 
-      {/* Local File Import Panel */}
+      {/* Playbook Import/Export Panel */}
       {onImportCombo && (
-        <div className="rounded-xl border border-zinc-900 bg-zinc-950 p-4 flex items-center justify-between gap-4">
-          <div className="space-y-0.5">
-            <h4 className="text-xs font-semibold text-zinc-300">Import Custom Playbook</h4>
-            <p className="text-[10px] text-zinc-500">Load a saved `.json` combo file from disk.</p>
+        <div className="rounded-xl border border-zinc-900 bg-zinc-950 p-4 space-y-3">
+          <div className="flex items-center justify-between gap-4">
+            <div className="space-y-0.5">
+              <h4 className="text-xs font-semibold text-zinc-300">Playbook Configuration</h4>
+              <p className="text-[10px] text-zinc-500">Import or export your custom combos as one `.json` playbook file.</p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleImportClick}
+                className="flex items-center gap-1.5 rounded-lg border border-zinc-800 hover:border-zinc-700 bg-zinc-900/40 hover:bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-zinc-300 transition-all active:scale-[0.98]"
+              >
+                <UploadSimple size={12} />
+                <span>Import</span>
+              </button>
+              {onExportPlaybook && customRouteIds.size > 0 && (
+                <button
+                  type="button"
+                  onClick={onExportPlaybook}
+                  className="flex items-center gap-1.5 rounded-lg border border-emerald-900/60 bg-emerald-950/15 hover:bg-emerald-950/30 text-emerald-400 px-3 py-1.5 text-xs font-semibold transition-all active:scale-[0.98]"
+                  title="Export all your custom/AI-generated combos as one Playbook JSON file"
+                >
+                  <DownloadSimple size={12} />
+                  <span>Export Playbook</span>
+                </button>
+              )}
+            </div>
           </div>
-          <button
-            type="button"
-            onClick={handleImportClick}
-            className="flex items-center gap-1.5 rounded-lg border border-zinc-800 hover:border-zinc-700 bg-zinc-900/40 hover:bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-zinc-300 transition-all active:scale-[0.98]"
-          >
-            <UploadSimple size={12} />
-            <span>Import</span>
-          </button>
           <input
             type="file"
             ref={fileInputRef}
