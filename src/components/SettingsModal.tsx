@@ -12,27 +12,32 @@ interface SettingsModalProps {
   onSave: (settings: AISettings) => void;
 }
 
+interface OpenRouterModel {
+  id: string;
+  name: string;
+}
+
 export function SettingsModal({ isOpen, onClose, settings, onSave }: SettingsModalProps) {
   const [provider, setProvider] = useState<AIProvider>(settings.provider);
   const [model, setModel] = useState<string>(settings.model);
   const [customApiKey, setCustomApiKey] = useState<string>(settings.customApiKey);
   const [useDemo, setUseDemo] = useState<boolean>(settings.useDemo);
 
-  const [openRouterModels, setOpenRouterModels] = useState<{ id: string; name: string }[]>([]);
+  const [openRouterModels, setOpenRouterModels] = useState<OpenRouterModel[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
 
   useEffect(() => {
     if (provider === 'openrouter' && openRouterModels.length === 0 && isOpen) {
-      setIsLoadingModels(true);
-      fetch('https://openrouter.ai/api/v1/models')
-        .then(res => res.json())
-        .then(data => {
+      const loadModels = async () => {
+        try {
+          const res = await fetch('https://openrouter.ai/api/v1/models');
+          const data = await res.json();
           if (data && Array.isArray(data.data)) {
-            const fetched = data.data.map((m: any) => ({
+            const fetched = data.data.map((m: OpenRouterModel) => ({
               id: m.id,
               name: m.name || m.id
             }));
-            
+
             // Priority list of best models for YGO logic
             const RECOMMENDED_IDS = [
               'anthropic/claude-3.5-sonnet',
@@ -52,14 +57,14 @@ export function SettingsModal({ isOpen, onClose, settings, onSave }: SettingsMod
             };
 
             // Sort: recommended first, then alphabetically
-            fetched.sort((a: any, b: any) => {
+            fetched.sort((a: OpenRouterModel, b: OpenRouterModel) => {
               const weightA = getModelWeight(a.id);
               const weightB = getModelWeight(b.id);
               if (weightA !== weightB) return weightA - weightB;
               return a.name.localeCompare(b.name);
             });
 
-            const mappedModels = fetched.map((m: any) => {
+            const mappedModels = fetched.map((m: OpenRouterModel) => {
               const weight = getModelWeight(m.id);
               if (weight !== 9999) {
                 return {
@@ -72,13 +77,19 @@ export function SettingsModal({ isOpen, onClose, settings, onSave }: SettingsMod
 
             setOpenRouterModels(mappedModels);
           }
-        })
-        .catch(err => {
+        } catch (err) {
           console.error('Failed to fetch OpenRouter models:', err);
-        })
-        .finally(() => {
+        } finally {
           setIsLoadingModels(false);
-        });
+        }
+      };
+
+      // Deferred so the initial setIsLoadingModels(true) doesn't fire synchronously
+      // within the effect body (avoids the cascading-render lint/perf warning).
+      setTimeout(() => {
+        setIsLoadingModels(true);
+        loadModels();
+      }, 0);
     }
   }, [provider, openRouterModels.length, isOpen]);
 

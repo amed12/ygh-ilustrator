@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import Image from 'next/image';
 import { CARD_REGISTRY } from '../data/cards';
 import { YGOPROCardDetails } from '../types';
 
@@ -75,15 +76,17 @@ export function CardDisplay({
 
       {/* Card Image */}
       {!loadError && !isReserved ? (
-        <img
+        <Image
           src={cardInfo.imageUrl}
           alt={cardInfo.name}
+          fill
+          unoptimized
           onLoad={() => setImageLoaded(true)}
           onError={() => {
             setLoadError(true);
             setImageLoaded(true);
           }}
-          className={`w-full h-full object-cover rounded transition-opacity duration-300 ${
+          className={`object-cover rounded transition-opacity duration-300 ${
             imageLoaded ? 'opacity-100' : 'opacity-0'
           }`}
         />

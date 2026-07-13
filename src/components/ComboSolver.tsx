@@ -5,7 +5,7 @@ import { ComboRoute, YGOPROCardDetails } from '../types';
 import { CardDisplay } from './CardDisplay';
 import { TurnPosition } from '../services/prompts';
 import {
-  Lightning, Trophy, Shield, Sword, Sparkle, ArrowLeft,
+  Lightning, Trophy, Shield, Sword, Sparkle,
   SunHorizon, MoonStars, CheckCircle, WarningCircle, X
 } from '@phosphor-icons/react';
 

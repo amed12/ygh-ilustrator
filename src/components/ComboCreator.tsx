@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { DeckList, ComboRoute, ComboStep, ComboResponse, EndBoard, YGOPROCardDetails } from '../types';
+import React, { useState, useMemo } from 'react';
+import { DeckList, ComboRoute, ComboStep, ComboResponse, YGOPROCardDetails } from '../types';
 import { CARD_REGISTRY } from '../data/cards';
 import { CardDisplay } from './CardDisplay';
-import { X, Plus, Trash, Sparkle, ArrowLeft, FloppyDisk, DownloadSimple } from '@phosphor-icons/react';
+import { X, Plus, Trash, ArrowLeft, FloppyDisk, DownloadSimple } from '@phosphor-icons/react';
 
 interface ComboCreatorProps {
   deck: DeckList;
@@ -31,7 +31,7 @@ export function ComboCreator({
 
   // Basic Info State
   const [name, setName] = useState('');
-  const [archetype, setArchetype] = useState('');
+  const [archetype, setArchetype] = useState(defaultArchetype || '');
   const [description, setDescription] = useState('');
   const [tags, setTags] = useState<string[]>(['going-first']);
   const [tagInput, setTagInput] = useState('');
@@ -58,13 +58,6 @@ export function ComboCreator({
   // Visual Card Picker Modal State
   const [pickerStepId, setPickerStepId] = useState<number | null>(null);
   const [pickerSearchQuery, setPickerSearchQuery] = useState('');
-
-  // Auto-populate archetype if fetched asynchronously
-  useEffect(() => {
-    if (defaultArchetype && !archetype) {
-      setArchetype(defaultArchetype);
-    }
-  }, [defaultArchetype]);
 
   // Group deck cards for starters selector (Main deck only since starters must be in hand)
   const mainDeckEntries = useMemo(() => {
@@ -143,7 +136,7 @@ export function ComboCreator({
     setSteps(steps.filter(s => s.id !== id));
   };
 
-  const updateStepField = (id: number, field: keyof ComboStep, value: any) => {
+  const updateStepField = <K extends keyof ComboStep>(id: number, field: K, value: ComboStep[K]) => {
     setSteps(steps.map(s => s.id === id ? { ...s, [field]: value } : s));
   };
 
@@ -172,7 +165,7 @@ export function ComboCreator({
     }));
   };
 
-  const updateResponse = (stepId: number, resIndex: number, field: keyof ComboResponse, value: any) => {
+  const updateResponse = <K extends keyof ComboResponse>(stepId: number, resIndex: number, field: K, value: ComboResponse[K]) => {
     setSteps(steps.map(s => {
       if (s.id === stepId && s.responses) {
         const newResponses = [...s.responses];
@@ -462,7 +455,7 @@ export function ComboCreator({
           </div>
 
           <div className="space-y-4 max-h-[600px] overflow-y-auto pr-1 custom-scrollbar">
-            {steps.map((step, idx) => (
+            {steps.map((step) => (
               <div key={step.id} className="relative rounded-xl border border-zinc-900 bg-zinc-950 p-4 space-y-4">
                 {/* Step ID Header */}
                 <div className="flex justify-between items-center border-b border-zinc-900 pb-2">
