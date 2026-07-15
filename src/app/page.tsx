@@ -674,7 +674,6 @@ export default function Home() {
                 onSelectRoute={handleStartCombo}
                 onGenerateAI={handleOpenHandSelector}
                 isAiGenerating={isAiGenerating}
-                hasAiConfig={!settings.useDemo && settings.customApiKey.trim() !== ''}
                 onExportRoute={handleExportCombo}
                 onShareRoute={handleShareCombo}
                 sharedRouteId={justCopiedRouteId}

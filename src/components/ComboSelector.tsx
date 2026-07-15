@@ -4,7 +4,7 @@ import React, { useRef } from 'react';
 import { ComboRoute, DeckList, YGOPROCardDetails } from '../types';
 import { CARD_REGISTRY } from '../data/cards';
 import { probabilityToOpenCombo, probabilityToBrick } from '../engine/probability';
-import { Play, Tag, Lightbulb, Sparkle, UploadSimple, DownloadSimple, ShareNetwork, Plus, ChartBar, Brain } from '@phosphor-icons/react';
+import { Play, Tag, Lightbulb, UploadSimple, DownloadSimple, ShareNetwork, Plus, ChartBar, Brain, Hand } from '@phosphor-icons/react';
 
 const EFFICIENCY_STYLES: Record<string, string> = {
   'optimal': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25',
@@ -17,7 +17,6 @@ interface ComboSelectorProps {
   onSelectRoute: (route: ComboRoute) => void;
   onGenerateAI: () => void;
   isAiGenerating: boolean;
-  hasAiConfig: boolean;
   onExportRoute?: (route: ComboRoute) => void;
   onShareRoute?: (route: ComboRoute) => void;
   sharedRouteId?: string | null;
@@ -38,7 +37,6 @@ export function ComboSelector({
   onSelectRoute,
   onGenerateAI,
   isAiGenerating,
-  hasAiConfig,
   onExportRoute,
   onShareRoute,
   sharedRouteId,
@@ -214,16 +212,16 @@ export function ComboSelector({
         </div>
       )}
 
-      {/* AI Generator Panel Trigger */}
+      {/* Hand Selector Panel Trigger */}
       <div className="rounded-xl border border-indigo-950 bg-indigo-950/5 p-4 space-y-3">
         <div className="flex items-start gap-3">
           <div className="rounded bg-indigo-500/10 p-2 text-indigo-400 shrink-0">
-            <Sparkle size={18} weight="duotone" />
+            <Hand size={18} weight="duotone" />
           </div>
           <div>
-            <h4 className="text-xs font-semibold text-zinc-200">Dynamic AI Combo Solver</h4>
+            <h4 className="text-xs font-semibold text-zinc-200">Find Combo Lines from a Hand</h4>
             <p className="text-[11px] text-zinc-400 leading-relaxed mt-0.5">
-              Generate a custom combo path specifically tailored to the cards inside this deck, complete with branching recovery steps.
+              Pick your opening hand and turn position — you&apos;ll then see offline playbook/reachable-via-search matches instantly, with AI analysis available as an extra option.
             </p>
           </div>
         </div>
@@ -241,8 +239,8 @@ export function ComboSelector({
             </>
           ) : (
             <>
-              <Sparkle size={14} weight="fill" />
-              <span>{hasAiConfig ? 'Generate Combo with AI' : 'Generate with AI (Using Demo)'}</span>
+              <Hand size={14} weight="fill" />
+              <span>Pick Opening Hand</span>
             </>
           )}
         </button>
