@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { CardDisplay } from './CardDisplay';
-import { DeckList, ComboRoute, YGOPROCardDetails } from '../types';
+import { DeckList, ComboRoute, YGOPROCardDetails, DeckProfile } from '../types';
 import { TurnPosition } from '../services/prompts';
 import { CARD_REGISTRY } from '../data/cards';
 import { findPlayableRoutes } from '../engine/comboEngine';
@@ -18,6 +18,7 @@ interface HandSelectorProps {
   onSelectCombo: (route: ComboRoute) => void;
   isGenerating: boolean;
   cardDetails?: Record<string, YGOPROCardDetails>;
+  deckProfile?: DeckProfile | null;
   onCardMouseEnter?: (cardId: string, e: React.MouseEvent) => void;
   onCardMouseLeave?: () => void;
   onCardMouseMove?: (e: React.MouseEvent) => void;
@@ -32,6 +33,7 @@ export function HandSelector({
   onSelectCombo,
   isGenerating,
   cardDetails = {},
+  deckProfile,
   onCardMouseEnter,
   onCardMouseLeave,
   onCardMouseMove
@@ -102,9 +104,9 @@ export function HandSelector({
   // Non-direct (searchable/partial) adaptive matches, for the "N playable · M reachable" preview.
   const reachableCount = useMemo(() => {
     if (selectedCards.length === 0) return 0;
-    return rankRoutes(selectedCards, availableRoutes, deck, cardDetails)
+    return rankRoutes(selectedCards, availableRoutes, deck, cardDetails, deckProfile ?? undefined)
       .filter(m => m.playability !== 'direct').length;
-  }, [selectedCards, availableRoutes, deck, cardDetails]);
+  }, [selectedCards, availableRoutes, deck, cardDetails, deckProfile]);
 
   if (!isOpen) return null;
 

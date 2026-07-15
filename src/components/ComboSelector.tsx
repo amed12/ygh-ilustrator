@@ -4,7 +4,7 @@ import React, { useRef } from 'react';
 import { ComboRoute, DeckList, YGOPROCardDetails } from '../types';
 import { CARD_REGISTRY } from '../data/cards';
 import { probabilityToOpenCombo, probabilityToBrick } from '../engine/probability';
-import { Play, Tag, Lightbulb, Sparkle, UploadSimple, DownloadSimple, ShareNetwork, Plus, ChartBar } from '@phosphor-icons/react';
+import { Play, Tag, Lightbulb, Sparkle, UploadSimple, DownloadSimple, ShareNetwork, Plus, ChartBar, Brain } from '@phosphor-icons/react';
 
 const EFFICIENCY_STYLES: Record<string, string> = {
   'optimal': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25',
@@ -28,6 +28,9 @@ interface ComboSelectorProps {
   deckCardIds?: Set<string>;
   deck?: DeckList;
   cardDetails?: Record<string, YGOPROCardDetails>;
+  hasDeckProfile?: boolean;
+  isProfileGenerating?: boolean;
+  onAnalyzeDeckRoles?: () => void;
 }
 
 export function ComboSelector({
@@ -45,7 +48,10 @@ export function ComboSelector({
   customRouteIds = new Set(),
   deckCardIds = new Set(),
   deck,
-  cardDetails = {}
+  cardDetails = {},
+  hasDeckProfile = false,
+  isProfileGenerating = false,
+  onAnalyzeDeckRoles
 }: ComboSelectorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -280,6 +286,33 @@ export function ComboSelector({
             multiple
             className="hidden"
           />
+        </div>
+      )}
+
+      {/* Deck Profile Analysis Panel — one-shot AI compile powering the offline adaptive matcher */}
+      {onAnalyzeDeckRoles && (
+        <div className="rounded-xl border border-zinc-900 bg-zinc-950 p-4 flex items-center justify-between gap-4">
+          <div className="space-y-0.5">
+            <h4 className="text-xs font-semibold text-zinc-300">Deck Role Analysis</h4>
+            <p className="text-[10px] text-zinc-500">
+              {hasDeckProfile
+                ? 'AI has classified every card\'s role/search targets — reachable-line matching uses this.'
+                : 'One-time AI pass to classify each card\'s role and search targets, cached for this deck. Improves how many reachable lines get found — no AI needed afterward.'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onAnalyzeDeckRoles}
+            disabled={isProfileGenerating}
+            className="flex items-center gap-1.5 shrink-0 rounded-lg border border-zinc-800 hover:border-zinc-700 bg-zinc-900/40 hover:bg-zinc-900 disabled:opacity-50 px-3 py-1.5 text-xs font-semibold text-zinc-300 transition-all active:scale-[0.98]"
+          >
+            {isProfileGenerating ? (
+              <span className="animate-spin inline-block w-3 h-3 rounded-full border-2 border-zinc-500 border-t-white" />
+            ) : (
+              <Brain size={12} />
+            )}
+            <span>{hasDeckProfile ? 'Re-analyze' : 'Analyze Deck Roles'}</span>
+          </button>
         </div>
       )}
 

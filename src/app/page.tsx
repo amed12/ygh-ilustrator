@@ -11,7 +11,7 @@ import { ComboGenerator } from '../components/ComboGenerator';
 import { HandSelector } from '../components/HandSelector';
 import { ComboCreator } from '../components/ComboCreator';
 import { CardTooltip } from '../components/CardTooltip';
-import { DeckList, ComboRoute, AISettings, ComboStep, ComboHandContext, YGOPROCardDetails } from '../types';
+import { DeckList, ComboRoute, AISettings, ComboStep, ComboHandContext, YGOPROCardDetails, DeckProfile } from '../types';
 import { TurnPosition } from '../services/prompts';
 import { ALL_COMBO_ROUTES } from '../data/combos';
 import { CARD_REGISTRY } from '../data/cards';
@@ -22,6 +22,8 @@ import { exportComboToFile, exportPlaybookToFile, importComboFromFile } from '..
 import { buildShareUrl, readShareParamFromLocation, decodeShareableCombo, clearShareParamFromLocation } from '../services/shareLink';
 import { ComboSolver } from '../components/ComboSolver';
 import { getCachedCards, putCachedCards } from '../services/cardCache';
+import { getCachedDeckProfile, putCachedDeckProfile, hashDeck } from '../services/deckProfileCache';
+import { generateDeckProfile } from '../services/aiClient';
 
 const DEFAULT_SETTINGS: AISettings = {
   provider: 'gemini',
@@ -78,6 +80,10 @@ export default function Home() {
   // Card details database state
   const [cardDetails, setCardDetails] = useState<Record<string, YGOPROCardDetails>>({});
 
+  // AI-compiled deck profile (roles + search graph) — powers the offline adaptive matcher
+  const [deckProfile, setDeckProfile] = useState<DeckProfile | null>(null);
+  const [isProfileGenerating, setIsProfileGenerating] = useState(false);
+
   // Tooltip tracking state
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -108,6 +114,7 @@ export default function Home() {
           const session: PersistedSession = JSON.parse(stored);
           if (session.deckList) {
             setDeckList(session.deckList);
+            setDeckProfile(getCachedDeckProfile(hashDeck(session.deckList)));
             setView('deck');
           }
           if (session.customRoutes?.length) setCustomRoutes(session.customRoutes);
@@ -162,7 +169,26 @@ export default function Home() {
     setDeckList(deck);
     setSelectedRoute(null);
     loadCardDetailsForDeck(deck);
+    setDeckProfile(getCachedDeckProfile(hashDeck(deck)));
     setView('deck');
+  };
+
+  // One-shot AI compile of card roles/search graph for the current deck — cached afterward so
+  // the adaptive matcher runs fully offline until the deck composition actually changes.
+  const handleAnalyzeDeckRoles = async () => {
+    if (!deckList) return;
+    setIsProfileGenerating(true);
+    try {
+      const deckHash = hashDeck(deckList);
+      const profile = await generateDeckProfile(deckList, settings, cardDetails, deckHash);
+      putCachedDeckProfile(profile);
+      setDeckProfile(profile);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Something unexpected went wrong.';
+      alert(`Couldn't analyze deck roles: ${message}`);
+    } finally {
+      setIsProfileGenerating(false);
+    }
   };
 
   // Helper to fetch details for all cards in a deck in chunks
@@ -435,7 +461,7 @@ export default function Home() {
   // Export all accumulated custom/AI-generated combos as a single Playbook file
   const handleExportPlaybook = () => {
     if (customRoutes.length === 0) return;
-    exportPlaybookToFile(customRoutes, handContexts);
+    exportPlaybookToFile(customRoutes, handContexts, deckProfile ?? undefined);
   };
 
   // Copies a shareable link to this combo (bundling the current deck, if any) to the clipboard.
@@ -465,13 +491,16 @@ export default function Home() {
 
       for (const file of files) {
         try {
-          const importedItems = await importComboFromFile(file);
+          const { routes: importedItems, deckProfile: importedProfile } = await importComboFromFile(file);
           for (const item of importedItems) {
             newRoutes.push(item.route);
             if (item.handContext) {
               newContexts[item.route.id] = item.handContext;
             }
             successCount++;
+          }
+          if (importedProfile) {
+            putCachedDeckProfile(importedProfile);
           }
         } catch (err) {
           console.error(`Import failed for ${file.name}:`, err);
@@ -656,6 +685,11 @@ export default function Home() {
                 deckCardIds={new Set([...deckList.main, ...deckList.extra, ...deckList.side])}
                 deck={deckList}
                 cardDetails={cardDetails}
+                hasDeckProfile={!!deckProfile}
+                isProfileGenerating={isProfileGenerating}
+                onAnalyzeDeckRoles={
+                  (settings.useDemo || settings.customApiKey.trim() !== '') ? handleAnalyzeDeckRoles : undefined
+                }
               />
             </div>
           </div>
@@ -735,6 +769,7 @@ export default function Home() {
           }}
           isGenerating={isAiGenerating}
           cardDetails={cardDetails}
+          deckProfile={deckProfile}
           onCardMouseEnter={handleCardMouseEnter}
           onCardMouseLeave={handleCardMouseLeave}
           onCardMouseMove={handleCardMouseMove}
@@ -745,7 +780,7 @@ export default function Home() {
       {isComboSolverOpen && deckList && (
         <ComboSolver
           playableRoutes={findPlayableRoutes(solverHand, getMatchingCombos(), deckList)}
-          reachableMatches={rankRoutes(solverHand, getMatchingCombos(), deckList, cardDetails).filter(m => m.playability !== 'direct')}
+          reachableMatches={rankRoutes(solverHand, getMatchingCombos(), deckList, cardDetails, deckProfile ?? undefined).filter(m => m.playability !== 'direct')}
           aiRoutes={solverAiRoutes}
           handCards={solverHand}
           turnPosition={solverTurn}

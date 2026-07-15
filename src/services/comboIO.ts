@@ -1,4 +1,13 @@
-import { ComboRoute, ComboHandContext, ComboExportFile, PlaybookExportFile, ComboStep, ComboResponse, StateMutations, EndBoard } from '../types';
+import { ComboRoute, ComboHandContext, ComboExportFile, PlaybookExportFile, ComboStep, ComboResponse, StateMutations, EndBoard, TacticalRole, DeckProfile, CardProfile, CardRole } from '../types';
+
+const VALID_TACTICAL_ROLES = new Set<TacticalRole>([
+  'negate-monster', 'negate-spell-trap', 'omni-negate', 'board-wipe',
+  'targeted-removal', 'protection', 'floodgate', 'attacker', 'recovery'
+]);
+
+const VALID_CARD_ROLES = new Set<CardRole>([
+  'starter', 'extender', 'searcher', 'hand-trap', 'board-breaker', 'brick'
+]);
 
 /**
  * Serializes and triggers a browser download for a single combo route.
@@ -34,7 +43,11 @@ export function exportComboToFile(route: ComboRoute, handContext?: ComboHandCont
  * Playbook file, so a user's accumulated custom/AI-generated combos can be backed up
  * and re-imported together in one file instead of one at a time.
  */
-export function exportPlaybookToFile(routes: ComboRoute[], handContexts: Record<string, ComboHandContext>): void {
+export function exportPlaybookToFile(
+  routes: ComboRoute[],
+  handContexts: Record<string, ComboHandContext>,
+  deckProfile?: DeckProfile
+): void {
   const filteredContexts: Record<string, ComboHandContext> = {};
   routes.forEach(r => {
     if (handContexts[r.id]) {
@@ -46,7 +59,8 @@ export function exportPlaybookToFile(routes: ComboRoute[], handContexts: Record<
     version: '1.0',
     exportedAt: new Date().toISOString(),
     routes,
-    handContexts: filteredContexts
+    handContexts: filteredContexts,
+    ...(deckProfile ? { deckProfile } : {})
   };
 
   const jsonString = JSON.stringify(exportData, null, 2);
@@ -71,7 +85,10 @@ export function exportPlaybookToFile(routes: ComboRoute[], handContexts: Record<
  * ComboExportFile or a multi-combo PlaybookExportFile — always resolves to an array
  * (length 1 for a single-combo file) so callers don't need to care which format was used.
  */
-export function importComboFromFile(file: File): Promise<{ route: ComboRoute; handContext?: ComboHandContext }[]> {
+export function importComboFromFile(file: File): Promise<{
+  routes: { route: ComboRoute; handContext?: ComboHandContext }[];
+  deckProfile?: DeckProfile;
+}> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
@@ -84,7 +101,7 @@ export function importComboFromFile(file: File): Promise<{ route: ComboRoute; ha
 
         const data = JSON.parse(text);
         const resolved = parseImportedFile(data);
-        if (!resolved || resolved.length === 0) {
+        if (!resolved || resolved.routes.length === 0) {
           throw new Error('Invalid combo file format. The file is corrupted or not a valid YGO Combo Engine export.');
         }
 
@@ -157,10 +174,59 @@ function parseStateMutations(raw: unknown): StateMutations | undefined {
 function parseEndBoard(raw: unknown): EndBoard | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const eb = raw as Record<string, unknown>;
+
+  let cardRoles: Record<string, TacticalRole[]> | undefined;
+  if (eb.cardRoles && typeof eb.cardRoles === 'object') {
+    const normalized: Record<string, TacticalRole[]> = {};
+    for (const [cardId, roles] of Object.entries(eb.cardRoles as Record<string, unknown>)) {
+      if (!Array.isArray(roles)) continue;
+      const validRoles = roles
+        .map(r => String(r).toLowerCase())
+        .filter((r): r is TacticalRole => VALID_TACTICAL_ROLES.has(r as TacticalRole));
+      if (validRoles.length) normalized[cardId] = validRoles;
+    }
+    if (Object.keys(normalized).length) cardRoles = normalized;
+  }
+
   return {
     monsters: Array.isArray(eb.monsters) ? eb.monsters.map(String) : [],
     spellsTraps: Array.isArray(eb.spellsTraps) ? eb.spellsTraps.map(String) : [],
-    interruptions: Array.isArray(eb.interruptions) ? eb.interruptions.map(String) : []
+    interruptions: Array.isArray(eb.interruptions) ? eb.interruptions.map(String) : [],
+    ...(cardRoles ? { cardRoles } : {})
+  };
+}
+
+/**
+ * Parses an imported DeckProfile, if present. Structural only (like the rest of file import) —
+ * drops malformed card entries instead of rejecting the whole file.
+ */
+function parseDeckProfile(raw: unknown): DeckProfile | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const dp = raw as Record<string, unknown>;
+  if (dp.version !== '1.0' || typeof dp.deckHash !== 'string' || !dp.cards || typeof dp.cards !== 'object') {
+    return undefined;
+  }
+
+  const cards: Record<string, CardProfile> = {};
+  for (const [cardId, rawProfile] of Object.entries(dp.cards as Record<string, unknown>)) {
+    if (!rawProfile || typeof rawProfile !== 'object') continue;
+    const p = rawProfile as Record<string, unknown>;
+    const roles = Array.isArray(p.roles)
+      ? p.roles.map(r => String(r).toLowerCase()).filter((r): r is CardRole => VALID_CARD_ROLES.has(r as CardRole))
+      : [];
+    if (roles.length === 0) continue;
+    const searches = Array.isArray(p.searches) ? p.searches.map(String) : [];
+    cards[cardId] = { cardId, roles, ...(searches.length ? { searches } : {}) };
+  }
+
+  if (Object.keys(cards).length === 0) return undefined;
+
+  return {
+    version: '1.0',
+    deckHash: dp.deckHash,
+    source: 'ai',
+    generatedAt: typeof dp.generatedAt === 'string' ? dp.generatedAt : new Date().toISOString(),
+    cards
   };
 }
 
@@ -233,7 +299,10 @@ export function parseHandContextRaw(raw: unknown): ComboHandContext | undefined 
  * parseComboRouteRaw/parseHandContextRaw so file import and share-link decoding
  * (services/shareLink.ts) enforce identical structural guarantees.
  */
-function parseImportedFile(raw: unknown): { route: ComboRoute; handContext?: ComboHandContext }[] | null {
+function parseImportedFile(raw: unknown): {
+  routes: { route: ComboRoute; handContext?: ComboHandContext }[];
+  deckProfile?: DeckProfile;
+} | null {
   if (!raw || typeof raw !== 'object') return null;
   const data = raw as Record<string, unknown>;
   if (data.version !== '1.0') return null;
@@ -253,17 +322,19 @@ function parseImportedFile(raw: unknown): { route: ComboRoute; handContext?: Com
         handContext: parseHandContextRaw(handCtxsObj[route.id])
       });
     }
-    return results;
+    return { routes: results, deckProfile: parseDeckProfile(data.deckProfile) };
   }
 
   // Single-combo format.
   if (data.route && typeof data.route === 'object') {
     const route = parseComboRouteRaw(data.route);
     if (!route) return null;
-    return [{
-      route,
-      handContext: parseHandContextRaw(data.handContext)
-    }];
+    return {
+      routes: [{
+        route,
+        handContext: parseHandContextRaw(data.handContext)
+      }]
+    };
   }
 
   return null;
