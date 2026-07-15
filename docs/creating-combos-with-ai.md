@@ -93,6 +93,8 @@ There are two accepted shapes. Both are plain JSON, `version` must be exactly `"
   //   be suggested to you.
   "tags": ["going-first"],           // free-form labels shown as badges: e.g. "going-first",
                                       // "going-second", "otk", "grind", "defensive", "boss-monster"
+  "efficiency": "optimal",           // optional: "optimal" | "sub-optimal" | "brick" — your own
+                                      // assessment of how good this line is from the given hand
   "endBoard": {                      // optional but strongly recommended
     "monsters": ["73347079"],        // card IDs left on your field/Extra Monster Zone at the end
     "spellsTraps": [],               // card IDs of set/active spells or traps at the end
@@ -176,6 +178,7 @@ RULES YOU MUST FOLLOW:
 6. Step "id" values must be unique integers starting at 1, sequential. Every "next_step"
    must point to a real step id in the same route, or null to end that branch.
 7. Use double quotes for card names inside "action" strings (e.g. Normal Summon "Card Name").
+8. Rate the line's "efficiency": "optimal" if the end board is the strongest this hand can honestly produce, "sub-optimal" if it works but falls short of the deck's potential, or "brick" if the hand produces no meaningful board.
 
 OUTPUT SCHEMA (single combo):
 {
@@ -188,6 +191,7 @@ OUTPUT SCHEMA (single combo):
     "description": "string, 2-3 sentences",
     "requiredCards": ["passcode", "..."],
     "tags": ["going-first" | "going-second" | "otk" | "grind" | "defensive" | "boss-monster"],
+    "efficiency": "optimal" | "sub-optimal" | "brick",
     "endBoard": {
       "monsters": ["passcode", "..."],
       "spellsTraps": ["passcode", "..."],
@@ -368,6 +372,7 @@ the app's parser, not just hand-written).
 | `route.description` | recommended | string | Shown under the title in the combo list. |
 | `route.requiredCards` | ✅ | string[] | Main Deck passcodes only — this is what the app matches against a drawn hand. |
 | `route.tags` | recommended | string[] | Free-form badges. |
+| `route.efficiency` | optional | `"optimal"` \| `"sub-optimal"` \| `"brick"` | Shown as a badge; unknown/missing values are silently ignored, not rejected. |
 | `route.endBoard` | recommended | object | Not required by file import, but the combo will look incomplete without it. |
 | `route.steps` | ✅ | array, non-empty | See step schema above. |
 | `step.id` | ✅ | integer | Unique per route, doesn't need to start at 1 but 1-indexed sequential is clearest. |
