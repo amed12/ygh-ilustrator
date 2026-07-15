@@ -19,7 +19,10 @@ export const RAIDRAPTOR_COMBOS: ComboRoute[] = [
     endBoard: {
       monsters: ['59822133'], // Rising Rebellion Falcon
       spellsTraps: [],
-      interruptions: ['Rising Rebellion Falcon: on-Summon effect destroys every card your opponent controls (whiffs if they control nothing — only run this line once they have a board)']
+      interruptions: ['Rising Rebellion Falcon: on-Summon effect destroys every card your opponent controls (whiffs if they control nothing — only run this line once they have a board)'],
+      cardRoles: {
+        '59822133': ['board-wipe']
+      }
     },
     steps: [
       {
@@ -219,7 +222,10 @@ export const RAIDRAPTOR_COMBOS: ComboRoute[] = [
     endBoard: {
       monsters: ['43047672'], // Final Fortress Falcon
       spellsTraps: [],
-      interruptions: ['Unaffected Boss Monster']
+      interruptions: ['Unaffected Boss Monster'],
+      cardRoles: {
+        '43047672': ['protection', 'attacker']
+      }
     },
     steps: [
       {

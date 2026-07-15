@@ -100,7 +100,13 @@ There are two accepted shapes. Both are plain JSON, `version` must be exactly `"
     "spellsTraps": [],               // card IDs of set/active spells or traps at the end
     "interruptions": [
       "Card Name: exactly what it negates/prevents — be specific, not \"1 negate\""
-    ]
+    ],
+    "cardRoles": {                    // optional: cardId -> tactical role(s), shown as glowing
+                                      // badges on the end board ("cockpit" view)
+      "73347079": ["negate-monster"]
+      // allowed roles: negate-monster | negate-spell-trap | omni-negate | board-wipe |
+      //   targeted-removal | protection | floodgate | attacker | recovery
+    }
   },
   "steps": [
     {
@@ -195,7 +201,8 @@ OUTPUT SCHEMA (single combo):
     "endBoard": {
       "monsters": ["passcode", "..."],
       "spellsTraps": ["passcode", "..."],
-      "interruptions": ["Card Name: specific effect description, 15+ characters"]
+      "interruptions": ["Card Name: specific effect description, 15+ characters"],
+      "cardRoles": { "passcode": ["negate-monster" | "negate-spell-trap" | "omni-negate" | "board-wipe" | "targeted-removal" | "protection" | "floodgate" | "attacker" | "recovery"] }
     },
     "steps": [
       {
@@ -374,6 +381,7 @@ the app's parser, not just hand-written).
 | `route.tags` | recommended | string[] | Free-form badges. |
 | `route.efficiency` | optional | `"optimal"` \| `"sub-optimal"` \| `"brick"` | Shown as a badge; unknown/missing values are silently ignored, not rejected. |
 | `route.endBoard` | recommended | object | Not required by file import, but the combo will look incomplete without it. |
+| `route.endBoard.cardRoles` | optional | `Record<cardId, TacticalRole[]>` | Tactical role badges shown on the end board. Entries for card IDs not in `monsters`/`spellsTraps`, or roles outside the fixed taxonomy, are silently dropped rather than rejected. |
 | `route.steps` | ✅ | array, non-empty | See step schema above. |
 | `step.id` | ✅ | integer | Unique per route, doesn't need to start at 1 but 1-indexed sequential is clearest. |
 | `step.action` | ✅ | string, non-empty | Shown as the instruction text during practice. |
