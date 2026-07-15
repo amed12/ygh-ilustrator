@@ -41,6 +41,8 @@ export interface ComboRoute {
   steps: ComboStep[];
   tags: string[];
   endBoard?: EndBoard;
+  /** AI's self-assessment of how good this line is from the given hand. */
+  efficiency?: 'optimal' | 'sub-optimal' | 'brick';
 }
 
 export interface DeckList {

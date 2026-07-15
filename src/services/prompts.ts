@@ -195,6 +195,7 @@ STRICT DESIGN RULES:
 5. STATE MUTATIONS: For every step, track hand/field/GY/banished changes in stateMutations. Accuracy is required.
 6. STEP IDs: Must be unique 1-indexed integers. No broken pointers. Last step in each branch must have next_step: null.
 7. ALL REQUIRED CARDS: The "requiredCards" array must list ONLY the card IDs from the opening hand that are essential starters.
+8. EFFICIENCY RATING: Set "efficiency" to "optimal" if the end board is the strongest this hand can honestly produce with multiple real interruptions, "sub-optimal" if the line works but the board is below the deck's potential (e.g. compromised by a Maxx "C" branch, or only a secondary starter), or "brick" if the hand produces no meaningful board (set and pass).
 
 ═══════════════════════════════════
 OUTPUT FORMAT:
@@ -249,7 +250,8 @@ JSON SCHEMA:
       }
     }
   ],
-  "tags": ["going-first" | "going-second" | "otk" | "grind" | "defensive" | "side-in"]
+  "tags": ["going-first" | "going-second" | "otk" | "grind" | "defensive" | "side-in"],
+  "efficiency": "optimal" | "sub-optimal" | "brick"
 }`;
 }
 
@@ -333,6 +335,7 @@ STRICT DESIGN RULES (apply to EVERY route in the array):
 6. STEP IDs: Within EACH route, step IDs must be unique 1-indexed integers local to that route (every route restarts numbering at 1). No broken pointers. Last step in each branch must have next_step: null.
 7. ALL REQUIRED CARDS: Each route's "requiredCards" array must list ONLY the card IDs from the opening hand that are essential starters for THAT route.
 8. DISTINCT IDs ACROSS ROUTES: Each route's top-level "id" string must be unique across the array (e.g. "combo-a-starter-line", "combo-b-starter-line").
+9. EFFICIENCY RATING: Set each route's "efficiency" to "optimal" if its end board is the strongest that starter can honestly produce with multiple real interruptions, "sub-optimal" if the line works but the board is below the deck's potential, or "brick" if it produces no meaningful board.
 
 ═══════════════════════════════════
 OUTPUT FORMAT:
@@ -381,7 +384,8 @@ JSON SCHEMA (array of these):
         }
       }
     ],
-    "tags": ["going-first" | "going-second" | "otk" | "grind" | "defensive" | "side-in"]
+    "tags": ["going-first" | "going-second" | "otk" | "grind" | "defensive" | "side-in"],
+    "efficiency": "optimal" | "sub-optimal" | "brick"
   }
 ]`;
 }

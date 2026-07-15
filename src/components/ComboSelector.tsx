@@ -6,6 +6,12 @@ import { CARD_REGISTRY } from '../data/cards';
 import { probabilityToOpenCombo, probabilityToBrick } from '../engine/probability';
 import { Play, Tag, Lightbulb, Sparkle, UploadSimple, DownloadSimple, ShareNetwork, Plus, ChartBar } from '@phosphor-icons/react';
 
+const EFFICIENCY_STYLES: Record<string, string> = {
+  'optimal': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25',
+  'sub-optimal': 'bg-amber-500/10 text-amber-400 border-amber-500/25',
+  'brick': 'bg-rose-500/10 text-rose-400 border-rose-500/25',
+};
+
 interface ComboSelectorProps {
   matchingRoutes: ComboRoute[];
   onSelectRoute: (route: ComboRoute) => void;
@@ -169,6 +175,11 @@ export function ComboSelector({
               <div className="mt-4 flex items-center justify-between border-t border-zinc-900/60 pt-3">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <Tag size={12} className="text-zinc-500" />
+                  {route.efficiency && (
+                    <span className={`text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded border ${EFFICIENCY_STYLES[route.efficiency]}`}>
+                      {route.efficiency.replace(/-/g, ' ')}
+                    </span>
+                  )}
                   {route.tags.map((tag) => (
                     <span
                       key={tag}

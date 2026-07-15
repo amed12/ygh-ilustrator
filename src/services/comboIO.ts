@@ -197,7 +197,12 @@ export function parseComboRouteRaw(raw: unknown): ComboRoute | null {
       stateMutations: parseStateMutations(step.stateMutations)
     })),
     tags: Array.isArray(routeObj.tags) ? routeObj.tags.map(String) : [],
-    endBoard: parseEndBoard(routeObj.endBoard)
+    endBoard: parseEndBoard(routeObj.endBoard),
+    efficiency: (['optimal', 'sub-optimal', 'brick'] as const).includes(
+      routeObj.efficiency as 'optimal' | 'sub-optimal' | 'brick'
+    )
+      ? (routeObj.efficiency as 'optimal' | 'sub-optimal' | 'brick')
+      : undefined
   };
 }
 

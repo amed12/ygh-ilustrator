@@ -35,6 +35,18 @@ const TAG_STYLES: Record<string, string> = {
   'side-in': 'bg-pink-500/10 text-pink-400 border-pink-500/25',
 };
 
+const EFFICIENCY_STYLES: Record<string, string> = {
+  'optimal': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25',
+  'sub-optimal': 'bg-amber-500/10 text-amber-400 border-amber-500/25',
+  'brick': 'bg-rose-500/10 text-rose-400 border-rose-500/25',
+};
+
+const EFFICIENCY_ORDER: Record<string, number> = {
+  'optimal': 0,
+  'sub-optimal': 1,
+  'brick': 2,
+};
+
 function ComboCard({
   route,
   handCards,
@@ -71,6 +83,11 @@ function ComboCard({
             {isAI && (
               <span className="inline-flex items-center gap-1 text-[9px] font-mono uppercase tracking-widest bg-indigo-500/15 text-indigo-400 border border-indigo-500/25 px-1.5 py-0.5 rounded">
                 <Sparkle size={9} weight="fill" /> AI Generated
+              </span>
+            )}
+            {route.efficiency && (
+              <span className={`text-[9px] font-mono uppercase tracking-widest border px-1.5 py-0.5 rounded ${EFFICIENCY_STYLES[route.efficiency]}`}>
+                {route.efficiency.replace(/-/g, ' ')}
               </span>
             )}
             {route.tags?.map(tag => (
@@ -316,7 +333,11 @@ export function ComboSolver({
                 <span className="text-[9px] text-zinc-600 font-mono">generated from hand analysis</span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {aiRoutes.map(route => (
+                {[...aiRoutes].sort((a, b) => {
+                  const aOrder = a.efficiency ? EFFICIENCY_ORDER[a.efficiency] : 3;
+                  const bOrder = b.efficiency ? EFFICIENCY_ORDER[b.efficiency] : 3;
+                  return aOrder - bOrder;
+                }).map(route => (
                   <ComboCard
                     key={route.id}
                     route={route}

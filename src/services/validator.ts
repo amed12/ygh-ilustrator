@@ -219,6 +219,13 @@ export function validateComboRoute(raw: unknown, deckList: DeckList): Validation
     return { valid: false, errors };
   }
 
+  const rawEfficiency = String(data.efficiency ?? '').toLowerCase();
+  const efficiency = (['optimal', 'sub-optimal', 'brick'] as const).includes(
+    rawEfficiency as 'optimal' | 'sub-optimal' | 'brick'
+  )
+    ? (rawEfficiency as 'optimal' | 'sub-optimal' | 'brick')
+    : undefined;
+
   return {
     valid: true,
     data: {
@@ -229,7 +236,8 @@ export function validateComboRoute(raw: unknown, deckList: DeckList): Validation
       requiredCards: (data.requiredCards as string[]).map(String),
       steps: verifiedSteps,
       tags: (data.tags as string[] || []).map(String),
-      endBoard: data.endBoard as { monsters: string[]; spellsTraps: string[]; interruptions: string[] }
+      endBoard: data.endBoard as { monsters: string[]; spellsTraps: string[]; interruptions: string[] },
+      efficiency
     },
     errors: []
   };
