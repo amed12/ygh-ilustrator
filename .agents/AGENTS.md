@@ -11,7 +11,7 @@
 - `src/engine/` → Pure state machine. ZERO UI/React dependency.
 - `src/services/` → AI client & prompt templates. No UI logic.
 - `src/components/` → React UI ONLY. No direct API calls (use services/).
-- `src/data/` → Static combo data (Data-as-Code). Used for offline/demo mode.
+- `src/data/` → Static SEED combo/card data (Data-as-Code), used for offline/demo mode. User-created and AI-generated combos are NOT stored here — they live in component/page state, `localStorage`, and are moved in/out via `src/services/comboIO.ts` (file export/import) and `src/services/shareLink.ts` (share links).
 
 ## STRICT RULES
 

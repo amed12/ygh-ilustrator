@@ -9,9 +9,8 @@
 
 ## Adding a New AI Provider
 1. Add provider key to `AIProvider` union in `types.ts`
-2. Add fetch handler in `src/services/aiClient.ts`
-3. Add model options in `src/services/models.ts`
-4. Update `SettingsModal.tsx` dropdown
+2. Add its model list to the `PROVIDER_MODELS` map and its fetch handler in `src/services/aiClient.ts`
+3. Update `SettingsModal.tsx` dropdown
 
 ## Combo Step Rules
 - `id` must be unique within a route (1-indexed)
