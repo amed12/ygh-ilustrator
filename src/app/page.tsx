@@ -20,6 +20,7 @@ import { generateMultipleAICombos } from '../services/aiClient';
 import { exportComboToFile, exportPlaybookToFile, importComboFromFile } from '../services/comboIO';
 import { buildShareUrl, readShareParamFromLocation, decodeShareableCombo, clearShareParamFromLocation } from '../services/shareLink';
 import { ComboSolver } from '../components/ComboSolver';
+import { getCachedCards, putCachedCards } from '../services/cardCache';
 
 const DEFAULT_SETTINGS: AISettings = {
   provider: 'gemini',
@@ -180,17 +181,19 @@ export default function Home() {
 
     const uniqueIds = Array.from(new Set([...deck.main, ...deck.extra, ...deck.side]));
     const chunkSize = 25;
-    const detailsMap: Record<string, YGOPROCardDetails> = {};
-    
-    for (let i = 0; i < uniqueIds.length; i += chunkSize) {
-      const chunk = uniqueIds.slice(i, i + chunkSize);
+
+    const { hits, misses } = getCachedCards(uniqueIds);
+    const fetchedMap: Record<string, YGOPROCardDetails> = {};
+
+    for (let i = 0; i < misses.length; i += chunkSize) {
+      const chunk = misses.slice(i, i + chunkSize);
       try {
         const url = `https://db.ygoprodeck.com/api/v7/cardinfo.php?id=${chunk.join(',')}`;
         const response = await fetch(url);
         if (response.ok) {
           const res = await response.json();
           res.data?.forEach((card: YGOPROApiCard) => {
-            detailsMap[String(card.id)] = {
+            fetchedMap[String(card.id)] = {
               id: String(card.id),
               name: card.name,
               type: card.type,
@@ -208,8 +211,12 @@ export default function Home() {
         console.error('Failed to fetch card details for chunk:', chunk, e);
       }
     }
-    
-    setCardDetails(prev => ({ ...prev, ...detailsMap }));
+
+    if (Object.keys(fetchedMap).length) {
+      putCachedCards(fetchedMap);
+    }
+
+    setCardDetails(prev => ({ ...prev, ...hits, ...fetchedMap }));
   };
 
   // If the URL has a #share=... fragment, decode it and load the bundled combo (and deck,
