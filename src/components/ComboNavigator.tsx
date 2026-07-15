@@ -3,6 +3,7 @@
 import React from 'react';
 import { ComboRoute, ComboStep, ComboHandContext, ComboResponse, YGOPROCardDetails } from '../types';
 import { CardDisplay } from './CardDisplay';
+import { TacticalBadge } from './TacticalBadge';
 import { CARD_REGISTRY } from '../data/cards';
 import { StepTimeline } from './StepTimeline';
 import { FlowChart } from './FlowChart';
@@ -230,9 +231,14 @@ export function ComboNavigator({
                         <div className="flex gap-4">
                           <div className="flex-1">
                             <span className="text-[10px] text-indigo-400 uppercase block mb-1">Monsters</span>
-                            <div className="flex flex-wrap gap-1">
+                            <div className="flex flex-wrap gap-3">
                               {route.endBoard.monsters?.map((id, i) => (
-                                <span key={i} className="text-[9px] bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-300">{id}</span>
+                                <div key={i} className="flex flex-col items-center gap-1">
+                                  <CardDisplay cardId={id} size="sm" details={cardDetails[id]} glow={!!route.endBoard?.cardRoles?.[id]?.length} />
+                                  {route.endBoard?.cardRoles?.[id]?.map(role => (
+                                    <TacticalBadge key={role} role={role} />
+                                  ))}
+                                </div>
                               ))}
                             </div>
                           </div>

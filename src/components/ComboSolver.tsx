@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { ComboRoute, YGOPROCardDetails } from '../types';
 import { CardDisplay } from './CardDisplay';
+import { TacticalBadge } from './TacticalBadge';
 import { TurnPosition } from '../services/prompts';
 import {
   Lightning, Trophy, Shield, Sword, Sparkle,
@@ -151,6 +152,13 @@ function ComboCard({
               </button>
             )}
           </ul>
+          {route.endBoard.cardRoles && Object.keys(route.endBoard.cardRoles).length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-2 pt-2 border-t border-zinc-900">
+              {Object.entries(route.endBoard.cardRoles).flatMap(([cardId, roles]) =>
+                roles.map(role => <TacticalBadge key={`${cardId}-${role}`} role={role} />)
+              )}
+            </div>
+          )}
         </div>
       )}
 
