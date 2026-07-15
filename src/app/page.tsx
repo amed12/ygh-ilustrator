@@ -516,6 +516,29 @@ export default function Home() {
     selectedRoute ? ((selectedRoute.steps.find(s => s.id === currentStepId)?.responses?.length || 0) === 0) : true
   );
 
+  // Required main-deck starters not present in the hand this route was practiced from — surfaced
+  // as a warning banner so a "reachable via search" line is honest about what it assumes.
+  const getAssumedMissingCards = (): string[] => {
+    if (!selectedRoute || !deckList) return [];
+    const practicedHand = handContexts[selectedRoute.id]?.handCardIds ?? solverHand;
+    if (!practicedHand || practicedHand.length === 0) return [];
+
+    const mainDeckSet = new Set(deckList.main);
+    const handCounts = new Map<string, number>();
+    practicedHand.forEach(id => handCounts.set(id, (handCounts.get(id) || 0) + 1));
+
+    const reqCounts = new Map<string, number>();
+    selectedRoute.requiredCards.filter(id => mainDeckSet.has(id)).forEach(id => {
+      reqCounts.set(id, (reqCounts.get(id) || 0) + 1);
+    });
+
+    const missing: string[] = [];
+    reqCounts.forEach((count, id) => {
+      if ((handCounts.get(id) || 0) < count) missing.push(id);
+    });
+    return missing;
+  };
+
   const getDominantArchetype = () => {
     if (!deckList) return '';
     const counts: Record<string, number> = {};
@@ -658,6 +681,7 @@ export default function Home() {
             onShare={() => handleShareCombo(selectedRoute)}
             justCopied={justCopiedRouteId === selectedRoute.id}
             cardDetails={cardDetails}
+            assumedMissingCards={getAssumedMissingCards()}
             onCardMouseEnter={handleCardMouseEnter}
             onCardMouseLeave={handleCardMouseLeave}
             onCardMouseMove={handleCardMouseMove}

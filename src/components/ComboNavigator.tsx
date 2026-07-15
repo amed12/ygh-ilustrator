@@ -8,7 +8,7 @@ import { CARD_REGISTRY } from '../data/cards';
 import { StepTimeline } from './StepTimeline';
 import { FlowChart } from './FlowChart';
 import { OpeningHandPanel } from './OpeningHandPanel';
-import { ArrowLeft, ArrowCounterClockwise, DownloadSimple, ShareNetwork, Check, Trophy, SmileySad, XCircle } from '@phosphor-icons/react';
+import { ArrowLeft, ArrowCounterClockwise, DownloadSimple, ShareNetwork, Check, Trophy, SmileySad, XCircle, WarningCircle } from '@phosphor-icons/react';
 
 interface ComboNavigatorProps {
   route: ComboRoute;
@@ -25,6 +25,8 @@ interface ComboNavigatorProps {
   justCopied?: boolean;
   onStepClick?: (historyIndex: number) => void;
   cardDetails?: Record<string, YGOPROCardDetails>;
+  /** Required starters not actually in the practiced hand — this line assumes they're drawn/searched. */
+  assumedMissingCards?: string[];
   onCardMouseEnter?: (cardId: string, e: React.MouseEvent) => void;
   onCardMouseLeave?: () => void;
   onCardMouseMove?: (e: React.MouseEvent) => void;
@@ -45,6 +47,7 @@ export function ComboNavigator({
   justCopied,
   onStepClick,
   cardDetails = {},
+  assumedMissingCards = [],
   onCardMouseEnter,
   onCardMouseLeave,
   onCardMouseMove
@@ -74,6 +77,16 @@ export function ComboNavigator({
 
   return (
     <div className="space-y-6">
+      {/* Assumed-reachable-cards warning banner */}
+      {assumedMissingCards.length > 0 && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-500/25 bg-amber-500/5 px-4 py-3">
+          <WarningCircle size={16} className="text-amber-400 shrink-0 mt-0.5" weight="duotone" />
+          <p className="text-xs text-amber-300 leading-relaxed">
+            This line assumes you draw or search: {assumedMissingCards.map(id => resolveCardName(id)).join(', ')}.
+          </p>
+        </div>
+      )}
+
       {/* Top Controls Bar */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-zinc-900 pb-4">
         <div className="space-y-1">
