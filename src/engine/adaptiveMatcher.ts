@@ -1,4 +1,4 @@
-import { ComboRoute, DeckList, YGOPROCardDetails } from '../types';
+import { ComboRoute, DeckList, DeckProfile, YGOPROCardDetails } from '../types';
 
 /** Passcodes of common meta hand traps — treated as their own "reachable" pieces since they
  * don't need to be searched, just held; kept here so the matcher can recognize them without
@@ -40,7 +40,8 @@ export interface RouteMatch {
 export function buildSearchGraph(
   allRoutes: ComboRoute[],
   deck: DeckList,
-  cardDetails: Record<string, YGOPROCardDetails> = {}
+  cardDetails: Record<string, YGOPROCardDetails> = {},
+  deckProfile?: DeckProfile
 ): Map<string, Set<string>> {
   const graph = new Map<string, Set<string>>();
   const mainDeckSet = new Set(deck.main);
@@ -74,11 +75,20 @@ export function buildSearchGraph(
     }
   });
 
+  // AI-compiled deck profile (one-shot, cached) takes priority when present — its per-card
+  // "searches" list is generally more precise than the oracle-text heuristic above.
+  if (deckProfile) {
+    Object.values(deckProfile.cards).forEach(profile => {
+      (profile.searches ?? []).forEach(targetId => addEdge(profile.cardId, targetId));
+    });
+  }
+
   return graph;
 }
 
-function isHandTrap(cardId: string): boolean {
-  return KNOWN_HAND_TRAPS.has(cardId);
+function isHandTrap(cardId: string, deckProfile?: DeckProfile): boolean {
+  if (KNOWN_HAND_TRAPS.has(cardId)) return true;
+  return deckProfile?.cards[cardId]?.roles.includes('hand-trap') ?? false;
 }
 
 /**
@@ -90,10 +100,11 @@ export function rankRoutes(
   handCards: string[],
   allRoutes: ComboRoute[],
   deck: DeckList,
-  cardDetails: Record<string, YGOPROCardDetails> = {}
+  cardDetails: Record<string, YGOPROCardDetails> = {},
+  deckProfile?: DeckProfile
 ): RouteMatch[] {
   const mainDeckSet = new Set(deck.main);
-  const graph = buildSearchGraph(allRoutes, deck, cardDetails);
+  const graph = buildSearchGraph(allRoutes, deck, cardDetails, deckProfile);
 
   const handCounts = new Map<string, number>();
   handCards.forEach(id => handCounts.set(id, (handCounts.get(id) || 0) + 1));
@@ -143,7 +154,7 @@ export function rankRoutes(
     stillMissing.forEach(missingCardId => {
       const via = availableHandCards.find(handCardId => {
         if (claimedSearchers.has(handCardId)) return false;
-        if (isHandTrap(handCardId)) return false; // hand traps don't search starters
+        if (isHandTrap(handCardId, deckProfile)) return false; // hand traps don't search starters
         const oneHop = graph.get(handCardId)?.has(missingCardId);
         if (oneHop) return true;
         // 2-hop: handCard -> intermediate -> missingCardId

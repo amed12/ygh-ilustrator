@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { buildComboPrompt, buildMultiComboPrompt, TurnPosition } from '../../../services/prompts';
+import { buildComboPrompt, buildMultiComboPrompt, buildDeckProfilePrompt, TurnPosition } from '../../../services/prompts';
+import { YGOPROCardDetails } from '../../../types';
 
 // ── Rate limiting (in-memory, per-instance) ──────────────────────────────────
 // The demo mode shares a single server-side GEMINI_API_KEY across all visitors.
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { deckList, cardNames, handCards, turnPosition, mode } = body;
+    const { deckList, cardNames, handCards, turnPosition, mode, cardDetails } = body;
 
     if (!deckList || !cardNames) {
       return NextResponse.json(
@@ -71,6 +72,10 @@ export async function POST(req: NextRequest) {
     // Validate hand cards and turn position with safe defaults
     const resolvedHand: string[] = Array.isArray(handCards) ? handCards : [];
     const resolvedTurn: TurnPosition = turnPosition === 'going-second' ? 'going-second' : 'going-first';
+    const resolvedCardDetails: Record<string, YGOPROCardDetails> =
+      cardDetails && typeof cardDetails === 'object' && Object.keys(cardDetails).length <= MAX_CARD_NAMES
+        ? cardDetails
+        : {};
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
@@ -80,10 +85,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Build the correct system prompt (single or multi)
-    const prompt = mode === 'multi'
-      ? buildMultiComboPrompt(deckList, cardNames, resolvedHand, resolvedTurn)
-      : buildComboPrompt(deckList, cardNames, resolvedHand, resolvedTurn);
+    // Build the correct system prompt (single, multi, or one-shot deck profile)
+    const prompt = mode === 'profile'
+      ? buildDeckProfilePrompt(deckList, resolvedCardDetails)
+      : mode === 'multi'
+        ? buildMultiComboPrompt(deckList, cardNames, resolvedHand, resolvedTurn, resolvedCardDetails)
+        : buildComboPrompt(deckList, cardNames, resolvedHand, resolvedTurn, resolvedCardDetails);
 
     // Call Gemini API using process.env.GEMINI_API_KEY
     // Default to a fast/cheap model for the public demo to prevent excessive costs

@@ -1,6 +1,6 @@
-import { AISettings, ComboRoute, DeckList, YGOPROCardDetails } from '../types';
-import { buildComboPrompt, buildMultiComboPrompt, TurnPosition } from './prompts';
-import { validateComboRoute } from './validator';
+import { AISettings, ComboRoute, DeckList, DeckProfile, YGOPROCardDetails } from '../types';
+import { buildComboPrompt, buildMultiComboPrompt, buildDeckProfilePrompt, TurnPosition } from './prompts';
+import { validateComboRoute, validateDeckProfile } from './validator';
 
 /**
  * Cleans the LLM response to remove markdown backticks (e.g. ```json ... ```)
@@ -201,17 +201,57 @@ export async function generateMultipleAICombos(
 }
 
 /**
+ * Compiles a one-shot "deck profile" (card roles + search targets for every main-deck card),
+ * validates it, and returns it for the caller to cache. The AI runs once here; afterwards the
+ * adaptive matcher consumes this data purely offline.
+ */
+export async function generateDeckProfile(
+  deckList: DeckList,
+  settings: AISettings,
+  cardDetails: Record<string, YGOPROCardDetails>,
+  deckHash: string
+): Promise<DeckProfile> {
+  const prompt = buildDeckProfilePrompt(deckList, cardDetails);
+  const responseText = await callProvider(settings, prompt, 'profile', deckList, {}, [], 'going-first', cardDetails);
+
+  if (!responseText) {
+    throw new Error('AI returned an empty response.');
+  }
+
+  const cleaned = cleanJsonResponse(responseText);
+  let parsedJson: unknown;
+  try {
+    parsedJson = JSON.parse(cleaned);
+  } catch {
+    const repaired = tryRepairJson(cleaned);
+    try {
+      parsedJson = JSON.parse(repaired);
+    } catch {
+      throw new Error(`AI returned invalid JSON (could not repair): ${cleaned.substring(0, 200)}...`);
+    }
+  }
+
+  const validation = validateDeckProfile(parsedJson, deckList, deckHash);
+  if (!validation.valid) {
+    throw new Error(`AI Deck Profile Validation Failed:\n${validation.errors.join('\n')}`);
+  }
+
+  return validation.data!;
+}
+
+/**
  * Internal helper: sends prompt to the selected provider and returns raw text.
  * Support local proxy API call in settings.useDemo mode.
  */
 async function callProvider(
   settings: AISettings,
   prompt: string,
-  mode: 'single' | 'multi',
+  mode: 'single' | 'multi' | 'profile',
   deckList: DeckList,
   cardNames: Record<string, string>,
   handCards: string[],
-  turnPosition: TurnPosition
+  turnPosition: TurnPosition,
+  cardDetails?: Record<string, YGOPROCardDetails>
 ): Promise<string> {
   if (settings.useDemo) {
     const response = await fetch('/api/generate', {
@@ -222,7 +262,8 @@ async function callProvider(
         cardNames,
         handCards,
         turnPosition,
-        mode
+        mode,
+        cardDetails
       })
     });
 
