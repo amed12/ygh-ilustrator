@@ -92,6 +92,30 @@ export interface PlaybookExportFile {
   exportedAt: string;
   routes: ComboRoute[];
   handContexts?: Record<string, ComboHandContext>;
+  deckProfile?: DeckProfile;
+}
+
+/** Functional role(s) a card plays for adaptive-matcher search-graph purposes. */
+export type CardRole = 'starter' | 'extender' | 'searcher' | 'hand-trap' | 'board-breaker' | 'brick';
+
+export interface CardProfile {
+  cardId: string;
+  roles: CardRole[];
+  /** Card IDs this card can add from the Deck to the hand. */
+  searches?: string[];
+}
+
+/**
+ * A one-shot, AI-compiled map of what each main-deck card in a given deck actually does
+ * (roles + search targets). Generated once per deck and cached — the adaptive matcher then
+ * runs purely offline/deterministically using this data, no AI needed at runtime.
+ */
+export interface DeckProfile {
+  version: '1.0';
+  deckHash: string;
+  source: 'ai';
+  generatedAt: string;
+  cards: Record<string, CardProfile>;
 }
 
 export interface YGOPROCardDetails {

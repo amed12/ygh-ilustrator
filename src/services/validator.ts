@@ -1,4 +1,4 @@
-import { ComboRoute, ComboStep, DeckList, ComboResponse, EndBoard, TacticalRole } from '../types';
+import { ComboRoute, ComboStep, DeckList, ComboResponse, EndBoard, TacticalRole, DeckProfile, CardProfile, CardRole } from '../types';
 
 const VALID_TACTICAL_ROLES = new Set<TacticalRole>([
   'negate-monster',
@@ -11,6 +11,75 @@ const VALID_TACTICAL_ROLES = new Set<TacticalRole>([
   'attacker',
   'recovery'
 ]);
+
+const VALID_CARD_ROLES = new Set<CardRole>([
+  'starter',
+  'extender',
+  'searcher',
+  'hand-trap',
+  'board-breaker',
+  'brick'
+]);
+
+export interface DeckProfileValidationResult {
+  valid: boolean;
+  data?: DeckProfile;
+  errors: string[];
+}
+
+/**
+ * Validates a raw AI-generated deck profile against the imported deck's main deck cards.
+ * Anti-hallucination: drops any card entry not actually in the main deck, and any search
+ * target not in the main deck. Never hard-fails on a single bad entry — just drops it,
+ * since a profile with fewer entries degrades gracefully (those cards just don't get
+ * search-graph edges) rather than blocking the whole feature.
+ */
+export function validateDeckProfile(raw: unknown, deckList: DeckList, deckHash: string): DeckProfileValidationResult {
+  if (!raw || typeof raw !== 'object') {
+    return { valid: false, errors: ['Response is not a valid JSON object.'] };
+  }
+
+  const data = raw as Record<string, unknown>;
+  if (!data.cards || typeof data.cards !== 'object') {
+    return { valid: false, errors: ['Missing "cards" object.'] };
+  }
+
+  const mainDeckSet = new Set(deckList.main);
+  const rawCards = data.cards as Record<string, unknown>;
+  const cards: Record<string, CardProfile> = {};
+
+  for (const [cardId, rawProfile] of Object.entries(rawCards)) {
+    if (!mainDeckSet.has(cardId) || !rawProfile || typeof rawProfile !== 'object') continue;
+    const p = rawProfile as Record<string, unknown>;
+
+    const roles = Array.isArray(p.roles)
+      ? p.roles.map(r => String(r).toLowerCase()).filter((r): r is CardRole => VALID_CARD_ROLES.has(r as CardRole))
+      : [];
+    if (roles.length === 0) continue;
+
+    const searches = Array.isArray(p.searches)
+      ? p.searches.map(String).filter(id => mainDeckSet.has(id) && id !== cardId)
+      : [];
+
+    cards[cardId] = { cardId, roles, ...(searches.length ? { searches } : {}) };
+  }
+
+  if (Object.keys(cards).length === 0) {
+    return { valid: false, errors: ['No valid card entries survived validation.'] };
+  }
+
+  return {
+    valid: true,
+    data: {
+      version: '1.0',
+      deckHash,
+      source: 'ai',
+      generatedAt: new Date().toISOString(),
+      cards
+    },
+    errors: []
+  };
+}
 
 export interface ValidationResult {
   valid: boolean;

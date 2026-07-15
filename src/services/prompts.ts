@@ -263,6 +263,58 @@ JSON SCHEMA:
 }
 
 /**
+ * Builds a one-shot prompt asking the AI to compile a "deck profile": for every main-deck card,
+ * its functional role(s) and what it can search from the Deck to the hand. This runs once per
+ * deck (result is cached), so the adaptive matcher can work purely offline afterward — the AI
+ * is a compiler here, not a runtime dependency.
+ */
+export function buildDeckProfilePrompt(
+  deckList: DeckList,
+  cardDetails: Record<string, YGOPROCardDetails> = {}
+): string {
+  const mainSection = deckList.main
+    .filter((id, i) => deckList.main.indexOf(id) === i) // unique
+    .map(id => formatCardBlock(id, cardDetails[id], true))
+    .join('\n');
+
+  return `You are a Yu-Gi-Oh! TCG / Master Duel deck analyst. Analyze ONLY the Main Deck cards
+below and classify each one's functional role(s) for combo-line matching purposes.
+
+═══════════════════════════════════
+MAIN DECK (${deckList.main.length} cards) — FULL CARD EFFECTS:
+═══════════════════════════════════
+${mainSection}
+
+═══════════════════════════════════
+TASK:
+═══════════════════════════════════
+For EVERY card ID listed above, output an entry with:
+1. "roles": one or more of this exact taxonomy: "starter" (can independently begin a combo),
+   "extender" (continues/extends an existing line but can't start one alone), "searcher"
+   (adds a card from the Deck to the hand), "hand-trap" (opponent's-turn interruption, e.g.
+   Ash Blossom, Maxx "C", Nibiru), "board-breaker" (removes/negates the opponent's cards from
+   your side), "brick" (dead card with no useful effect in a vacuum).
+2. "searches": ONLY if the card's effect adds another card from the Deck to the hand — list
+   the card ID(s) of what it can concretely search. If the effect is conditional/generic (e.g.
+   "any Level 4 monster"), list every ID from the Main Deck above that plausibly qualifies. If
+   a card cannot search anything, omit "searches" entirely or use an empty array.
+
+RULES:
+- Only use card IDs that appear in the Main Deck list above.
+- Base every judgment strictly on the effect text given — do not use general knowledge of the
+  card beyond what's printed here.
+- Do not invent search targets that aren't actually reachable by the printed effect.
+
+OUTPUT FORMAT:
+Respond with ONLY a valid raw JSON object. No markdown, no backticks, no explanation.
+{
+  "cards": {
+    "<card ID>": { "roles": ["starter" | "extender" | "searcher" | "hand-trap" | "board-breaker" | "brick"], "searches": ["<card ID>", "..."] }
+  }
+}`;
+}
+
+/**
  * Builds a prompt for LLMs to generate MULTIPLE distinct combo routes from a single opening hand
  * in one call — one route per viable starter/line (e.g. "if you open card A", "if you open card B").
  * Each route follows the exact same per-route JSON schema as buildComboPrompt, returned as a JSON array.
