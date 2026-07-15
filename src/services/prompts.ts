@@ -49,6 +49,9 @@ RULES ENFORCEMENT (a route that violates any of these is INVALID, not just subop
 5. NIBIRU TIMING. Nibiru, the Primal Being can only be activated once 5 or more monsters have been Summoned (Normal or Special, either player) this turn — do not place a "nibiru" branch before the 5th Summon in the line.
 6. DO NOT FABRICATE INTERRUPTIONS. Every entry in endBoard.interruptions must correspond to an effect actually printed on a card that ends up on the field per the route — do not invent negates the deck doesn't have access to.`;
 
+/** Fixed taxonomy for endBoard.cardRoles — every surviving end-board card gets a tactical label. */
+const TACTICAL_ROLE_TAXONOMY = `negate-monster, negate-spell-trap, omni-negate, board-wipe, targeted-removal, protection, floodgate, attacker, recovery`;
+
 interface PromptSections {
   handSection: string;
   extraSection: string;
@@ -196,6 +199,7 @@ STRICT DESIGN RULES:
 6. STEP IDs: Must be unique 1-indexed integers. No broken pointers. Last step in each branch must have next_step: null.
 7. ALL REQUIRED CARDS: The "requiredCards" array must list ONLY the card IDs from the opening hand that are essential starters.
 8. EFFICIENCY RATING: Set "efficiency" to "optimal" if the end board is the strongest this hand can honestly produce with multiple real interruptions, "sub-optimal" if the line works but the board is below the deck's potential (e.g. compromised by a Maxx "C" branch, or only a secondary starter), or "brick" if the hand produces no meaningful board (set and pass).
+9. TACTICAL ROLES: For every card ID listed in endBoard.monsters or endBoard.spellsTraps, assign it 1+ tactical role(s) in endBoard.cardRoles using ONLY this exact taxonomy: ${TACTICAL_ROLE_TAXONOMY}.
 
 ═══════════════════════════════════
 OUTPUT FORMAT:
@@ -231,7 +235,10 @@ JSON SCHEMA:
     "spellsTraps": ["string (card ID of each set/active spell or trap at end)"],
     "interruptions": [
       "string (specific disruption — card name + exactly what it does, e.g. 'Raidraptor - Ultimate Falcon: unaffected by card effects, reduces all opponent monster ATK to 0 in opponent turn')"
-    ]
+    ],
+    "cardRoles": {
+      "<card ID from monsters/spellsTraps>": ["negate-monster" | "negate-spell-trap" | "omni-negate" | "board-wipe" | "targeted-removal" | "protection" | "floodgate" | "attacker" | "recovery"]
+    }
   },
   "steps": [
     {
@@ -336,6 +343,7 @@ STRICT DESIGN RULES (apply to EVERY route in the array):
 7. ALL REQUIRED CARDS: Each route's "requiredCards" array must list ONLY the card IDs from the opening hand that are essential starters for THAT route.
 8. DISTINCT IDs ACROSS ROUTES: Each route's top-level "id" string must be unique across the array (e.g. "combo-a-starter-line", "combo-b-starter-line").
 9. EFFICIENCY RATING: Set each route's "efficiency" to "optimal" if its end board is the strongest that starter can honestly produce with multiple real interruptions, "sub-optimal" if the line works but the board is below the deck's potential, or "brick" if it produces no meaningful board.
+10. TACTICAL ROLES: For every card ID listed in a route's endBoard.monsters or endBoard.spellsTraps, assign it 1+ tactical role(s) in endBoard.cardRoles using ONLY this exact taxonomy: ${TACTICAL_ROLE_TAXONOMY}.
 
 ═══════════════════════════════════
 OUTPUT FORMAT:
@@ -365,7 +373,10 @@ JSON SCHEMA (array of these):
       "spellsTraps": ["string (card ID of each set/active spell or trap at end)"],
       "interruptions": [
         "string (specific disruption — card name + exactly what it does, e.g. 'Raidraptor - Ultimate Falcon: unaffected by card effects, reduces all opponent monster ATK to 0 in opponent turn')"
-      ]
+      ],
+      "cardRoles": {
+        "<card ID from monsters/spellsTraps>": ["negate-monster" | "negate-spell-trap" | "omni-negate" | "board-wipe" | "targeted-removal" | "protection" | "floodgate" | "attacker" | "recovery"]
+      }
     },
     "steps": [
       {

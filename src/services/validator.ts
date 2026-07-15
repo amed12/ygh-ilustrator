@@ -1,4 +1,16 @@
-import { ComboRoute, ComboStep, DeckList, ComboResponse } from '../types';
+import { ComboRoute, ComboStep, DeckList, ComboResponse, EndBoard, TacticalRole } from '../types';
+
+const VALID_TACTICAL_ROLES = new Set<TacticalRole>([
+  'negate-monster',
+  'negate-spell-trap',
+  'omni-negate',
+  'board-wipe',
+  'targeted-removal',
+  'protection',
+  'floodgate',
+  'attacker',
+  'recovery'
+]);
 
 export interface ValidationResult {
   valid: boolean;
@@ -45,6 +57,7 @@ export function validateComboRoute(raw: unknown, deckList: DeckList): Validation
   }
 
   // EndBoard Validation — required and must be non-trivially specified
+  let verifiedEndBoard: EndBoard | undefined;
   if (!data.endBoard || typeof data.endBoard !== 'object') {
     errors.push('endBoard is required. The AI must specify the full final board state.');
   } else {
@@ -69,6 +82,32 @@ export function validateComboRoute(raw: unknown, deckList: DeckList): Validation
         }
       });
     }
+
+    // cardRoles is optional — normalize and drop invalid entries rather than failing validation
+    const onBoardCardIds = new Set<string>([
+      ...(Array.isArray(eb.monsters) ? (eb.monsters as unknown[]).map(String) : []),
+      ...(Array.isArray(eb.spellsTraps) ? (eb.spellsTraps as unknown[]).map(String) : [])
+    ]);
+    let cardRoles: Record<string, TacticalRole[]> | undefined;
+    if (eb.cardRoles && typeof eb.cardRoles === 'object') {
+      const rawRoles = eb.cardRoles as Record<string, unknown>;
+      const normalized: Record<string, TacticalRole[]> = {};
+      for (const [cardId, roles] of Object.entries(rawRoles)) {
+        if (!onBoardCardIds.has(cardId) || !Array.isArray(roles)) continue;
+        const validRoles = roles
+          .map(r => String(r).toLowerCase())
+          .filter((r): r is TacticalRole => VALID_TACTICAL_ROLES.has(r as TacticalRole));
+        if (validRoles.length) normalized[cardId] = validRoles;
+      }
+      if (Object.keys(normalized).length) cardRoles = normalized;
+    }
+
+    verifiedEndBoard = {
+      monsters: Array.isArray(eb.monsters) ? (eb.monsters as unknown[]).map(String) : [],
+      spellsTraps: Array.isArray(eb.spellsTraps) ? (eb.spellsTraps as unknown[]).map(String) : [],
+      interruptions: Array.isArray(eb.interruptions) ? (eb.interruptions as unknown[]).map(String) : [],
+      ...(cardRoles ? { cardRoles } : {})
+    };
   }
 
   const stepsList = data.steps as Record<string, unknown>[];
@@ -236,7 +275,7 @@ export function validateComboRoute(raw: unknown, deckList: DeckList): Validation
       requiredCards: (data.requiredCards as string[]).map(String),
       steps: verifiedSteps,
       tags: (data.tags as string[] || []).map(String),
-      endBoard: data.endBoard as { monsters: string[]; spellsTraps: string[]; interruptions: string[] },
+      endBoard: verifiedEndBoard,
       efficiency
     },
     errors: []

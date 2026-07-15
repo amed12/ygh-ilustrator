@@ -26,10 +26,24 @@ export interface ComboStep {
   stateMutations?: StateMutations;
 }
 
+/** Taxonomy of the tactical job a surviving end-board card does. */
+export type TacticalRole =
+  | 'negate-monster'
+  | 'negate-spell-trap'
+  | 'omni-negate'
+  | 'board-wipe'
+  | 'targeted-removal'
+  | 'protection'
+  | 'floodgate'
+  | 'attacker'
+  | 'recovery';
+
 export interface EndBoard {
   monsters: string[];
   spellsTraps: string[];
   interruptions: string[];
+  /** cardId -> tactical role(s), for cockpit-style badges on the end board. */
+  cardRoles?: Record<string, TacticalRole[]>;
 }
 
 export interface ComboRoute {
