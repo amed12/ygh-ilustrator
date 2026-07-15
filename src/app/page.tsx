@@ -16,6 +16,7 @@ import { TurnPosition } from '../services/prompts';
 import { ALL_COMBO_ROUTES } from '../data/combos';
 import { CARD_REGISTRY } from '../data/cards';
 import { findMatchingRoutes, findPlayableRoutes } from '../engine/comboEngine';
+import { rankRoutes } from '../engine/adaptiveMatcher';
 import { generateMultipleAICombos } from '../services/aiClient';
 import { exportComboToFile, exportPlaybookToFile, importComboFromFile } from '../services/comboIO';
 import { buildShareUrl, readShareParamFromLocation, decodeShareableCombo, clearShareParamFromLocation } from '../services/shareLink';
@@ -720,6 +721,7 @@ export default function Home() {
       {isComboSolverOpen && deckList && (
         <ComboSolver
           playableRoutes={findPlayableRoutes(solverHand, getMatchingCombos(), deckList)}
+          reachableMatches={rankRoutes(solverHand, getMatchingCombos(), deckList, cardDetails).filter(m => m.playability !== 'direct')}
           aiRoutes={solverAiRoutes}
           handCards={solverHand}
           turnPosition={solverTurn}

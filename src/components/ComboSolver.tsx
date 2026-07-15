@@ -2,16 +2,18 @@
 
 import React, { useState } from 'react';
 import { ComboRoute, YGOPROCardDetails } from '../types';
+import { RouteMatch } from '../engine/adaptiveMatcher';
 import { CardDisplay } from './CardDisplay';
 import { TacticalBadge } from './TacticalBadge';
 import { TurnPosition } from '../services/prompts';
 import {
-  Lightning, Trophy, Shield, Sword, Sparkle,
+  Lightning, Trophy, Shield, Sword, Sparkle, Compass,
   SunHorizon, MoonStars, CheckCircle, WarningCircle, X
 } from '@phosphor-icons/react';
 
 interface ComboSolverProps {
   playableRoutes: ComboRoute[];        // From saved playbook (matches hand)
+  reachableMatches?: RouteMatch[];     // Non-direct (searchable/partial) adaptive matches
   aiRoutes: ComboRoute[];              // From AI multi-combo generation
   handCards: string[];
   turnPosition: TurnPosition;
@@ -54,6 +56,7 @@ function ComboCard({
   isAI,
   onSelect,
   cardDetails = {},
+  matchInfo,
   onCardMouseEnter,
   onCardMouseLeave,
   onCardMouseMove,
@@ -63,6 +66,7 @@ function ComboCard({
   isAI: boolean;
   onSelect: () => void;
   cardDetails?: Record<string, YGOPROCardDetails>;
+  matchInfo?: RouteMatch;
   onCardMouseEnter?: (cardId: string, e: React.MouseEvent) => void;
   onCardMouseLeave?: () => void;
   onCardMouseMove?: (e: React.MouseEvent) => void;
@@ -120,6 +124,33 @@ function ComboCard({
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Adaptive match info (searchable/partial routes only) */}
+      {matchInfo && matchInfo.playability !== 'direct' && (
+        <div className="mx-4 mb-3 rounded-lg bg-zinc-950/60 border border-zinc-900 p-3 space-y-1.5">
+          <div className="flex items-center gap-1.5">
+            <Compass size={12} className={matchInfo.playability === 'searchable' ? 'text-amber-400' : 'text-orange-400'} weight="duotone" />
+            <span className={`text-[9px] font-mono uppercase tracking-wider font-bold ${matchInfo.playability === 'searchable' ? 'text-amber-400' : 'text-orange-400'}`}>
+              {matchInfo.playability === 'searchable' ? 'Reachable via Search' : 'Partial Match'}
+            </span>
+            <span className="ml-auto text-[9px] font-mono text-zinc-500">
+              {matchInfo.satisfied.length + matchInfo.reachable.length}/{matchInfo.satisfied.length + matchInfo.reachable.length + matchInfo.missing.length} pieces
+            </span>
+          </div>
+          {matchInfo.reachable.map(r => (
+            <p key={r.missingCardId} className="text-[10px] text-zinc-400 leading-snug">
+              <span className="text-zinc-300">{cardDetails[r.missingCardId]?.name || `Card #${r.missingCardId}`}</span>
+              {' '}← via{' '}
+              <span className="text-amber-300">{cardDetails[r.viaHandCardId]?.name || `Card #${r.viaHandCardId}`}</span>
+            </p>
+          ))}
+          {matchInfo.missing.map(id => (
+            <p key={id} className="text-[10px] text-red-400/80 leading-snug">
+              Missing: {cardDetails[id]?.name || `Card #${id}`}
+            </p>
+          ))}
         </div>
       )}
 
@@ -189,6 +220,7 @@ function ComboCard({
 
 export function ComboSolver({
   playableRoutes,
+  reachableMatches = [],
   aiRoutes,
   handCards,
   turnPosition,
@@ -203,7 +235,7 @@ export function ComboSolver({
   onCardMouseLeave,
   onCardMouseMove,
 }: ComboSolverProps) {
-  const totalCombos = playableRoutes.length + aiRoutes.length;
+  const totalCombos = playableRoutes.length + reachableMatches.length + aiRoutes.length;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
@@ -330,6 +362,35 @@ export function ComboSolver({
             </section>
           )}
 
+          {/* Reachable Lines (searchable/partial adaptive matches) */}
+          {reachableMatches.length > 0 && (
+            <section>
+              <div className="flex items-center gap-2 mb-4">
+                <Compass size={14} weight="duotone" className="text-amber-400" />
+                <h3 className="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold">
+                  Reachable Lines ({reachableMatches.length})
+                </h3>
+                <span className="text-[9px] text-zinc-600 font-mono">not a direct match, but reachable via search</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {reachableMatches.map(match => (
+                  <ComboCard
+                    key={match.route.id}
+                    route={match.route}
+                    handCards={handCards}
+                    isAI={false}
+                    matchInfo={match}
+                    onSelect={() => onSelectCombo(match.route)}
+                    cardDetails={cardDetails}
+                    onCardMouseEnter={onCardMouseEnter}
+                    onCardMouseLeave={onCardMouseLeave}
+                    onCardMouseMove={onCardMouseMove}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
           {/* AI Generated Routes */}
           {aiRoutes.length > 0 && (
             <section>
@@ -369,9 +430,9 @@ export function ComboSolver({
                 <Sword size={28} className="text-zinc-600" weight="duotone" />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-zinc-400">No Saved Combos Match This Hand</h3>
+                <h3 className="text-sm font-semibold text-zinc-400">No Combo Lines Found for This Hand</h3>
                 <p className="text-xs text-zinc-600 mt-1 max-w-sm mx-auto leading-relaxed">
-                  None of your saved playbook combos start with the cards in this hand.
+                  No saved playbook combo directly matches or is reachable via search from this hand.
                   {hasAiConfig
                     ? ' Use the AI Analyze button to discover all possible lines.'
                     : ' Configure an AI provider in settings to auto-generate lines.'}
