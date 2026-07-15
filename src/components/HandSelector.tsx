@@ -6,6 +6,7 @@ import { DeckList, ComboRoute, YGOPROCardDetails } from '../types';
 import { TurnPosition } from '../services/prompts';
 import { CARD_REGISTRY } from '../data/cards';
 import { findPlayableRoutes } from '../engine/comboEngine';
+import { rankRoutes } from '../engine/adaptiveMatcher';
 import { X, Shuffle, Sparkle, SunHorizon, MoonStars, Hand } from '@phosphor-icons/react';
 
 interface HandSelectorProps {
@@ -97,6 +98,13 @@ export function HandSelector({
     if (selectedCards.length === 0) return [];
     return findPlayableRoutes(selectedCards, availableRoutes, deck);
   }, [selectedCards, availableRoutes, deck]);
+
+  // Non-direct (searchable/partial) adaptive matches, for the "N playable · M reachable" preview.
+  const reachableCount = useMemo(() => {
+    if (selectedCards.length === 0) return 0;
+    return rankRoutes(selectedCards, availableRoutes, deck, cardDetails)
+      .filter(m => m.playability !== 'direct').length;
+  }, [selectedCards, availableRoutes, deck, cardDetails]);
 
   if (!isOpen) return null;
 
@@ -280,11 +288,14 @@ export function HandSelector({
         </div>
 
         {/* Valid Combos Section */}
-        {validCombos.length > 0 && (
+        {(validCombos.length > 0 || reachableCount > 0) && (
           <div className="border-t border-zinc-900 bg-emerald-950/10 px-6 py-4 shrink-0">
             <p className="text-[10px] font-mono text-emerald-500 uppercase tracking-wider mb-3 font-bold">
-              {validCombos.length} Matching Combo{validCombos.length !== 1 ? 's' : ''} Available for this Hand
+              {validCombos.length} playable{reachableCount > 0 ? ` · ${reachableCount} reachable` : ''} for this Hand
             </p>
+            {validCombos.length === 0 && (
+              <p className="text-[10px] text-zinc-500 mb-2 -mt-1">Open the AI solver to see reachable-via-search lines.</p>
+            )}
             <div className="flex gap-3 overflow-x-auto custom-scrollbar pb-2">
               {validCombos.map(combo => (
                 <button
