@@ -1,17 +1,25 @@
 'use client';
 
 import React from 'react';
-import { YGOPROCardDetails } from '../types';
+import { CardRole, YGOPROCardDetails } from '../types';
 import { CARD_REGISTRY } from '../data/cards';
 import { Shield, Sword, Star } from '@phosphor-icons/react';
+import { CardRoleBadge } from './CardRoleBadge';
+import { resolveCardName } from '../utils/cardName';
 
 interface CardTooltipProps {
   cardId: string | null;
   position: { x: number; y: number };
   details?: YGOPROCardDetails;
+  /** AI-compiled deck-analysis role(s) for the hovered card. */
+  roles?: CardRole[];
+  /** Card IDs this card can search from the Deck (deck-analysis). */
+  searches?: string[];
+  /** Full card-details map, used to resolve search-target names. */
+  cardDetails?: Record<string, YGOPROCardDetails>;
 }
 
-export function CardTooltip({ cardId, position, details }: CardTooltipProps) {
+export function CardTooltip({ cardId, position, details, roles, searches, cardDetails }: CardTooltipProps) {
   if (!cardId) return null;
 
   // Fallback to registry info if full details are not yet loaded
@@ -116,6 +124,25 @@ export function CardTooltip({ cardId, position, details }: CardTooltipProps) {
             <span>DEF</span>
             <span className="font-bold text-zinc-100">{details.def !== undefined ? details.def : '?'}</span>
           </div>
+        </div>
+      )}
+
+      {/* Deck-analysis roles + search targets */}
+      {((roles && roles.length > 0) || (searches && searches.length > 0)) && (
+        <div className="flex flex-col gap-1.5 border-t border-zinc-900 pt-2">
+          {roles && roles.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1">
+              {roles.map(role => (
+                <CardRoleBadge key={role} role={role} size="xs" />
+              ))}
+            </div>
+          )}
+          {searches && searches.length > 0 && (
+            <p className="text-[9px] font-mono text-emerald-400/80 leading-snug">
+              <span className="text-zinc-500">Searches: </span>
+              {searches.map(id => resolveCardName(id, cardDetails)).join(', ')}
+            </p>
+          )}
         </div>
       )}
 

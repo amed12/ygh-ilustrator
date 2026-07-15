@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ComboRoute, ComboStep, ComboHandContext, ComboResponse, YGOPROCardDetails } from '../types';
+import { ComboRoute, ComboStep, ComboHandContext, ComboResponse, DeckProfile, YGOPROCardDetails } from '../types';
 import { CardDisplay } from './CardDisplay';
 import { TacticalBadge } from './TacticalBadge';
 import { CARD_REGISTRY } from '../data/cards';
@@ -25,6 +25,7 @@ interface ComboNavigatorProps {
   justCopied?: boolean;
   onStepClick?: (historyIndex: number) => void;
   cardDetails?: Record<string, YGOPROCardDetails>;
+  deckProfile?: DeckProfile | null;
   /** Required starters not actually in the practiced hand — this line assumes they're drawn/searched. */
   assumedMissingCards?: string[];
   onCardMouseEnter?: (cardId: string, e: React.MouseEvent) => void;
@@ -47,6 +48,7 @@ export function ComboNavigator({
   justCopied,
   onStepClick,
   cardDetails = {},
+  deckProfile,
   assumedMissingCards = [],
   onCardMouseEnter,
   onCardMouseLeave,
@@ -175,6 +177,7 @@ export function ComboNavigator({
                   size="lg"
                   glow={true}
                   details={cardDetails[currentStep.cardId]}
+                  roles={deckProfile?.cards[currentStep.cardId]?.roles}
                   onMouseEnter={onCardMouseEnter}
                   onMouseLeave={onCardMouseLeave}
                   onMouseMove={onCardMouseMove}

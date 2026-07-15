@@ -3,7 +3,8 @@
 import React, { useState } from 'react';
 import Image from 'next/image';
 import { CARD_REGISTRY } from '../data/cards';
-import { YGOPROCardDetails } from '../types';
+import { CardRole, YGOPROCardDetails } from '../types';
+import { CardRoleBadge } from './CardRoleBadge';
 
 interface CardDisplayProps {
   cardId: string;
@@ -13,6 +14,8 @@ interface CardDisplayProps {
    * priority over the static CARD_REGISTRY so any deck (not just the hardcoded sample) shows
    * a real card name instead of "Card #12345". */
   details?: YGOPROCardDetails;
+  /** AI-compiled deck-analysis role(s) for this card; when present, shown as chips on the card. */
+  roles?: CardRole[];
   onMouseEnter?: (cardId: string, e: React.MouseEvent) => void;
   onMouseLeave?: () => void;
   onMouseMove?: (e: React.MouseEvent) => void;
@@ -23,6 +26,7 @@ export function CardDisplay({
   size = 'md',
   glow = false,
   details,
+  roles,
   onMouseEnter,
   onMouseLeave,
   onMouseMove
@@ -41,6 +45,9 @@ export function CardDisplay({
           name: `Card #${cardId}`,
           imageUrl: `https://images.ygoprodeck.com/images/cards/${cardId}.jpg`
         };
+
+  // Role chips are only legible on md/lg cards; skip them on the tiny xs/sm thumbnails.
+  const showRoles = roles && roles.length > 0 && (size === 'md' || size === 'lg');
 
   const sizeClasses = {
     xs: 'w-10 h-14 text-[8px]',
@@ -100,6 +107,15 @@ export function CardDisplay({
           <div className="text-[8px] uppercase tracking-wider text-indigo-400 font-mono">
             {details || cardInfo.id in CARD_REGISTRY ? 'Database Match' : 'Unknown Card'}
           </div>
+        </div>
+      )}
+
+      {/* Deck-analysis role chips (top-left, non-interactive so they don't block hover) */}
+      {showRoles && (
+        <div className="absolute top-1 left-1 z-10 flex flex-col items-start gap-0.5 pointer-events-none">
+          {roles!.map(role => (
+            <CardRoleBadge key={role} role={role} size="xs" />
+          ))}
         </div>
       )}
 

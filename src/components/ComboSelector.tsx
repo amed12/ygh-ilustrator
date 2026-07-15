@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useRef } from 'react';
-import { ComboRoute, DeckList, YGOPROCardDetails } from '../types';
+import { ComboRoute, DeckList, DeckProfile, YGOPROCardDetails } from '../types';
 import { CARD_REGISTRY } from '../data/cards';
 import { probabilityToOpenCombo, probabilityToBrick } from '../engine/probability';
 import { Play, Tag, Lightbulb, UploadSimple, DownloadSimple, ShareNetwork, Plus, ChartBar, Brain, Hand } from '@phosphor-icons/react';
+import { DeckRoleBreakdown } from './DeckRoleBreakdown';
 
 const EFFICIENCY_STYLES: Record<string, string> = {
   'optimal': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25',
@@ -27,9 +28,13 @@ interface ComboSelectorProps {
   deckCardIds?: Set<string>;
   deck?: DeckList;
   cardDetails?: Record<string, YGOPROCardDetails>;
+  deckProfile?: DeckProfile | null;
   hasDeckProfile?: boolean;
   isProfileGenerating?: boolean;
   onAnalyzeDeckRoles?: () => void;
+  onCardMouseEnter?: (cardId: string, e: React.MouseEvent) => void;
+  onCardMouseLeave?: () => void;
+  onCardMouseMove?: (e: React.MouseEvent) => void;
 }
 
 export function ComboSelector({
@@ -47,9 +52,13 @@ export function ComboSelector({
   deckCardIds = new Set(),
   deck,
   cardDetails = {},
+  deckProfile,
   hasDeckProfile = false,
   isProfileGenerating = false,
-  onAnalyzeDeckRoles
+  onAnalyzeDeckRoles,
+  onCardMouseEnter,
+  onCardMouseLeave,
+  onCardMouseMove
 }: ComboSelectorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -312,6 +321,18 @@ export function ComboSelector({
             <span>{hasDeckProfile ? 'Re-analyze' : 'Analyze Deck Roles'}</span>
           </button>
         </div>
+      )}
+
+      {/* Per-card role breakdown, grouped by category — visible once the deck has been analyzed */}
+      {hasDeckProfile && deckProfile && deck && (
+        <DeckRoleBreakdown
+          deckProfile={deckProfile}
+          deck={deck}
+          cardDetails={cardDetails}
+          onCardMouseEnter={onCardMouseEnter}
+          onCardMouseLeave={onCardMouseLeave}
+          onCardMouseMove={onCardMouseMove}
+        />
       )}
 
       {/* Manual Combo Creator Panel */}

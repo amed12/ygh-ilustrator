@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { DeckList, ComboRoute, ComboStep, ComboResponse, YGOPROCardDetails } from '../types';
+import { DeckList, ComboRoute, ComboStep, ComboResponse, DeckProfile, YGOPROCardDetails } from '../types';
 import { CARD_REGISTRY } from '../data/cards';
 import { CardDisplay } from './CardDisplay';
+import { CardRoleBadge } from './CardRoleBadge';
 import { X, Plus, Trash, ArrowLeft, FloppyDisk, DownloadSimple } from '@phosphor-icons/react';
 
 interface ComboCreatorProps {
@@ -12,6 +13,7 @@ interface ComboCreatorProps {
   onSave: (route: ComboRoute) => void;
   onCancel: () => void;
   cardDetails?: Record<string, YGOPROCardDetails>;
+  deckProfile?: DeckProfile;
   onCardMouseEnter?: (cardId: string, e: React.MouseEvent) => void;
   onCardMouseLeave?: () => void;
   onCardMouseMove?: (e: React.MouseEvent) => void;
@@ -23,6 +25,7 @@ export function ComboCreator({
   onSave,
   onCancel,
   cardDetails = {},
+  deckProfile,
   onCardMouseEnter,
   onCardMouseLeave,
   onCardMouseMove
@@ -415,6 +418,15 @@ export function ComboCreator({
                         onMouseMove={onCardMouseMove}
                       />
 
+                      {/* Deck-analysis role chips */}
+                      {deckProfile?.cards[entry.id]?.roles?.length ? (
+                        <div className="mt-1 flex flex-wrap justify-center gap-0.5">
+                          {deckProfile.cards[entry.id].roles.map(role => (
+                            <CardRoleBadge key={role} role={role} size="xs" />
+                          ))}
+                        </div>
+                      ) : null}
+
                       {/* Selection badge */}
                       {isSelected && (
                         <span className="absolute -top-1 -right-1 z-10 flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500 border-2 border-zinc-950 text-[9px] font-bold text-white shadow-lg">
@@ -767,6 +779,13 @@ export function ComboCreator({
                         onMouseLeave={onCardMouseLeave}
                         onMouseMove={onCardMouseMove}
                       />
+                      {deckProfile?.cards[card.id]?.roles?.length ? (
+                        <div className="mt-1 flex flex-wrap justify-center gap-0.5">
+                          {deckProfile.cards[card.id].roles.map(role => (
+                            <CardRoleBadge key={role} role={role} size="xs" />
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                 {allUniqueDeckCards.filter(c => c.name.toLowerCase().includes(pickerSearchQuery.toLowerCase())).length === 0 && (

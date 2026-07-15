@@ -684,11 +684,15 @@ export default function Home() {
                 deckCardIds={new Set([...deckList.main, ...deckList.extra, ...deckList.side])}
                 deck={deckList}
                 cardDetails={cardDetails}
+                deckProfile={deckProfile}
                 hasDeckProfile={!!deckProfile}
                 isProfileGenerating={isProfileGenerating}
                 onAnalyzeDeckRoles={
                   (settings.useDemo || settings.customApiKey.trim() !== '') ? handleAnalyzeDeckRoles : undefined
                 }
+                onCardMouseEnter={handleCardMouseEnter}
+                onCardMouseLeave={handleCardMouseLeave}
+                onCardMouseMove={handleCardMouseMove}
               />
             </div>
           </div>
@@ -714,6 +718,7 @@ export default function Home() {
             onShare={() => handleShareCombo(selectedRoute)}
             justCopied={justCopiedRouteId === selectedRoute.id}
             cardDetails={cardDetails}
+            deckProfile={deckProfile}
             assumedMissingCards={getAssumedMissingCards()}
             onCardMouseEnter={handleCardMouseEnter}
             onCardMouseLeave={handleCardMouseLeave}
@@ -732,6 +737,7 @@ export default function Home() {
             }}
             onCancel={() => setView('deck')}
             cardDetails={cardDetails}
+            deckProfile={deckProfile ?? undefined}
             onCardMouseEnter={handleCardMouseEnter}
             onCardMouseLeave={handleCardMouseLeave}
             onCardMouseMove={handleCardMouseMove}
@@ -800,10 +806,13 @@ export default function Home() {
       )}
 
       {/* Card Info Popup Tooltip */}
-      <CardTooltip 
-        cardId={hoveredCardId} 
-        position={tooltipPosition} 
-        details={hoveredCardId ? cardDetails[hoveredCardId] : undefined} 
+      <CardTooltip
+        cardId={hoveredCardId}
+        position={tooltipPosition}
+        details={hoveredCardId ? cardDetails[hoveredCardId] : undefined}
+        roles={hoveredCardId ? deckProfile?.cards[hoveredCardId]?.roles : undefined}
+        searches={hoveredCardId ? deckProfile?.cards[hoveredCardId]?.searches : undefined}
+        cardDetails={cardDetails}
       />
     </div>
   );
