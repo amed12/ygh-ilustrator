@@ -8,7 +8,7 @@ import { CARD_REGISTRY } from '../data/cards';
 import { StepTimeline } from './StepTimeline';
 import { FlowChart } from './FlowChart';
 import { OpeningHandPanel } from './OpeningHandPanel';
-import { ArrowLeft, ArrowCounterClockwise, DownloadSimple, ShareNetwork, Check, Trophy, SmileySad, XCircle, WarningCircle } from '@phosphor-icons/react';
+import { ArrowLeft, ArrowCounterClockwise, DownloadSimple, ShareNetwork, Check, Trophy, SmileySad, XCircle, WarningCircle, PencilSimple } from '@phosphor-icons/react';
 
 interface ComboNavigatorProps {
   route: ComboRoute;
@@ -18,6 +18,7 @@ interface ComboNavigatorProps {
   progress: { current: number; total: number };
   onAdvance: (trigger: string) => void;
   onReset: () => void;
+  onEdit?: () => void;
   onBackToDeck: () => void;
   handContext?: ComboHandContext;
   onExport?: () => void;
@@ -41,6 +42,7 @@ export function ComboNavigator({
   progress,
   onAdvance,
   onReset,
+  onEdit,
   onBackToDeck,
   handContext,
   onExport,
@@ -128,6 +130,17 @@ export function ComboNavigator({
             >
               <DownloadSimple size={14} />
               <span>Export</span>
+            </button>
+          )}
+
+          {onEdit && (
+            <button
+              onClick={onEdit}
+              className="flex items-center gap-1.5 rounded-lg border border-zinc-800 hover:border-zinc-700 bg-zinc-900/40 hover:bg-zinc-900 px-3.5 py-2 text-xs font-semibold text-zinc-300 transition-all active:scale-[0.98]"
+              title="Edit this combo"
+            >
+              <PencilSimple size={14} />
+              <span>Edit</span>
             </button>
           )}
 

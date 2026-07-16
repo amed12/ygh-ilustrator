@@ -84,6 +84,9 @@ export default function Home() {
   const [deckProfile, setDeckProfile] = useState<DeckProfile | null>(null);
   const [isProfileGenerating, setIsProfileGenerating] = useState(false);
 
+  // Route currently being edited in the ComboCreator (null = creating a new one).
+  const [editingRoute, setEditingRoute] = useState<ComboRoute | null>(null);
+
   // Tooltip tracking state
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
   const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -305,6 +308,27 @@ export default function Home() {
     const uniqueCustom = Array.from(customMap.values());
     const matchedCustom = findMatchingRoutes(deckList, uniqueCustom);
     return [...matchedStatic, ...matchedCustom];
+  };
+
+  // Open the ComboCreator pre-filled from an existing route. Custom/AI routes edit in place
+  // (same id); built-in routes are edited as a new copy (handled by keepId in the render below).
+  const handleEditRoute = (route: ComboRoute) => {
+    setEditingRoute(route);
+    setView('create-combo');
+  };
+
+  // Delete a custom/AI route from the playbook (built-ins can't be deleted).
+  const handleDeleteRoute = (route: ComboRoute) => {
+    if (!window.confirm(`Delete "${route.name}"? This can't be undone.`)) return;
+    setCustomRoutes(prev => prev.filter(r => r.id !== route.id));
+    setHandContexts(prev => {
+      const next = { ...prev };
+      delete next[route.id];
+      return next;
+    });
+    if (selectedRoute?.id === route.id) {
+      setSelectedRoute(null);
+    }
   };
 
   // Start practicing a route
@@ -675,6 +699,8 @@ export default function Home() {
                 onGenerateAI={handleOpenHandSelector}
                 isAiGenerating={isAiGenerating}
                 onExportRoute={handleExportCombo}
+                onEditRoute={handleEditRoute}
+                onDeleteRoute={handleDeleteRoute}
                 onShareRoute={handleShareCombo}
                 sharedRouteId={justCopiedRouteId}
                 onImportCombo={handleImportCombo}
@@ -716,6 +742,7 @@ export default function Home() {
                 : undefined
             }
             onShare={() => handleShareCombo(selectedRoute)}
+            onEdit={() => handleEditRoute(selectedRoute)}
             justCopied={justCopiedRouteId === selectedRoute.id}
             cardDetails={cardDetails}
             deckProfile={deckProfile}
@@ -730,12 +757,22 @@ export default function Home() {
           <ComboCreator
             deck={deckList}
             defaultArchetype={getDominantArchetype()}
+            existingRoute={editingRoute ?? undefined}
+            keepId={editingRoute ? new Set(customRoutes.map(r => r.id)).has(editingRoute.id) : false}
             onSave={(newRoute) => {
-              // Add to memory list
-              setCustomRoutes(prev => [newRoute, ...prev]);
+              // Upsert: replace the existing entry when editing in place, else prepend a new one.
+              setCustomRoutes(prev =>
+                prev.some(r => r.id === newRoute.id)
+                  ? prev.map(r => (r.id === newRoute.id ? newRoute : r))
+                  : [newRoute, ...prev]
+              );
+              setEditingRoute(null);
               setView('deck');
             }}
-            onCancel={() => setView('deck')}
+            onCancel={() => {
+              setEditingRoute(null);
+              setView('deck');
+            }}
             cardDetails={cardDetails}
             deckProfile={deckProfile ?? undefined}
             onCardMouseEnter={handleCardMouseEnter}

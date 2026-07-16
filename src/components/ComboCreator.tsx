@@ -5,7 +5,8 @@ import { DeckList, ComboRoute, ComboStep, ComboResponse, DeckProfile, YGOPROCard
 import { CARD_REGISTRY } from '../data/cards';
 import { CardDisplay } from './CardDisplay';
 import { CardRoleBadge } from './CardRoleBadge';
-import { X, Plus, Trash, ArrowLeft, FloppyDisk, DownloadSimple } from '@phosphor-icons/react';
+import { X, Plus, Trash, ArrowLeft, FloppyDisk, DownloadSimple, CaretUp, CaretDown } from '@phosphor-icons/react';
+import { exportComboToFile } from '../services/comboIO';
 
 interface ComboCreatorProps {
   deck: DeckList;
@@ -14,6 +15,10 @@ interface ComboCreatorProps {
   onCancel: () => void;
   cardDetails?: Record<string, YGOPROCardDetails>;
   deckProfile?: DeckProfile;
+  /** When set, the builder opens in edit mode pre-filled from this route. */
+  existingRoute?: ComboRoute;
+  /** When editing, whether to save under the same id (custom/AI routes) or mint a new one (a copy of a built-in). */
+  keepId?: boolean;
   onCardMouseEnter?: (cardId: string, e: React.MouseEvent) => void;
   onCardMouseLeave?: () => void;
   onCardMouseMove?: (e: React.MouseEvent) => void;
@@ -26,36 +31,47 @@ export function ComboCreator({
   onCancel,
   cardDetails = {},
   deckProfile,
+  existingRoute,
+  keepId = false,
   onCardMouseEnter,
   onCardMouseLeave,
   onCardMouseMove
 }: ComboCreatorProps) {
+  const isEditing = !!existingRoute;
+
   const [activeTab, setActiveTab] = useState<'info' | 'steps' | 'endboard'>('info');
 
-  // Basic Info State
-  const [name, setName] = useState('');
-  const [archetype, setArchetype] = useState(defaultArchetype || '');
-  const [description, setDescription] = useState('');
-  const [tags, setTags] = useState<string[]>(['going-first']);
+  // Basic Info State — seeded from existingRoute when editing.
+  const [name, setName] = useState(() => existingRoute?.name ?? '');
+  const [archetype, setArchetype] = useState(() => existingRoute?.archetype ?? defaultArchetype ?? '');
+  const [description, setDescription] = useState(() => existingRoute?.description ?? '');
+  const [tags, setTags] = useState<string[]>(() => existingRoute?.tags ?? ['going-first']);
   const [tagInput, setTagInput] = useState('');
 
   // Required Starters
-  const [requiredCards, setRequiredCards] = useState<string[]>([]);
+  const [requiredCards, setRequiredCards] = useState<string[]>(() => existingRoute?.requiredCards ?? []);
 
-  // Steps State
-  const [steps, setSteps] = useState<ComboStep[]>([
-    {
-      id: 1,
-      action: '',
-      cardId: 'NONE',
-      responses: [{ trigger: 'success', next_step: null }]
-    }
-  ]);
+  // Steps State — keep full step objects (incl. stateMutations) when editing so nothing is lost.
+  const [steps, setSteps] = useState<ComboStep[]>(() =>
+    existingRoute && existingRoute.steps.length > 0
+      ? existingRoute.steps.map(s => ({
+          ...s,
+          responses: s.responses ?? [{ trigger: 'success', next_step: null }]
+        }))
+      : [
+          {
+            id: 1,
+            action: '',
+            cardId: 'NONE',
+            responses: [{ trigger: 'success', next_step: null }]
+          }
+        ]
+  );
 
   // End Board State
-  const [endBoardMonsters, setEndBoardMonsters] = useState<string[]>([]);
-  const [endBoardSpellsTraps, setEndBoardSpellsTraps] = useState<string[]>([]);
-  const [interruptions, setInterruptions] = useState<string[]>([]);
+  const [endBoardMonsters, setEndBoardMonsters] = useState<string[]>(() => existingRoute?.endBoard?.monsters ?? []);
+  const [endBoardSpellsTraps, setEndBoardSpellsTraps] = useState<string[]>(() => existingRoute?.endBoard?.spellsTraps ?? []);
+  const [interruptions, setInterruptions] = useState<string[]>(() => existingRoute?.endBoard?.interruptions ?? []);
   const [interruptionInput, setInterruptionInput] = useState('');
 
   // Visual Card Picker Modal State
@@ -136,7 +152,24 @@ export function ComboCreator({
   };
 
   const removeStep = (id: number) => {
-    setSteps(steps.filter(s => s.id !== id));
+    // Drop the step and scrub any branch pointers in the remaining steps that referenced it,
+    // so we never leave a dangling next_step pointing at a step that no longer exists.
+    setSteps(steps
+      .filter(s => s.id !== id)
+      .map(s => s.responses
+        ? { ...s, responses: s.responses.map(r => r.next_step === id ? { ...r, next_step: null } : r) }
+        : s
+      ));
+  };
+
+  // Reorder a step by swapping its array position with its neighbour. IDs stay fixed (they are
+  // stable labels that next_step pointers reference), so only the displayed order changes.
+  const moveStep = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= steps.length) return;
+    const next = [...steps];
+    [next[index], next[target]] = [next[target], next[index]];
+    setSteps(next);
   };
 
   const updateStepField = <K extends keyof ComboStep>(id: number, field: K, value: ComboStep[K]) => {
@@ -207,19 +240,14 @@ export function ComboCreator({
   };
 
   const handleExport = () => {
-    const route = buildRouteObject();
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(route, null, 2));
-    const downloadAnchor = document.createElement('a');
-    downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", `${route.id}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
+    // Use the canonical envelope exporter so the file round-trips through the importer.
+    exportComboToFile(buildRouteObject());
   };
 
   const buildRouteObject = (): ComboRoute => {
     return {
-      id: `custom-combo-${Date.now()}`,
+      // Keep the id when editing a custom/AI route; mint a new one when creating or copying a built-in.
+      id: existingRoute && keepId ? existingRoute.id : `custom-combo-${Date.now()}`,
       name: name.trim() || 'Untitled Custom Combo',
       archetype: archetype.trim() || 'Custom Playbook',
       description: description.trim() || 'Manually created custom combo playbook.',
@@ -228,20 +256,39 @@ export function ComboCreator({
         id: s.id,
         action: s.action.trim(),
         cardId: s.cardId,
-        responses: s.responses
+        responses: s.responses,
+        // Preserve simulator state mutations the UI can't edit (e.g. from AI-generated combos).
+        ...(s.stateMutations ? { stateMutations: s.stateMutations } : {})
       })),
       tags,
       endBoard: {
         monsters: endBoardMonsters,
         spellsTraps: endBoardSpellsTraps,
-        interruptions
-      }
+        interruptions,
+        // Carry through end-board tactical role labels the UI can't edit yet.
+        ...(existingRoute?.endBoard?.cardRoles ? { cardRoles: existingRoute.endBoard.cardRoles } : {})
+      },
+      // Carry through the AI's efficiency self-assessment if present.
+      ...(existingRoute?.efficiency ? { efficiency: existingRoute.efficiency } : {})
     };
   };
 
   const handleSave = () => {
     if (!name.trim()) {
       alert('Please provide a name for this custom combo.');
+      return;
+    }
+    // At least one step must have a real action.
+    const actionedSteps = steps.filter(s => s.action.trim());
+    if (actionedSteps.length === 0) {
+      alert('Add at least one step with an action describing what to do.');
+      return;
+    }
+    // Any step that has an action must also have a card assigned.
+    const unassigned = actionedSteps.filter(s => !s.cardId || s.cardId.toUpperCase() === 'NONE');
+    if (unassigned.length > 0) {
+      alert('Some steps have an action but no card assigned. Pick a card for each step (or use TOKEN/OPPONENT for generic actions).');
+      setActiveTab('steps');
       return;
     }
     const route = buildRouteObject();
@@ -268,10 +315,12 @@ export function ComboCreator({
             <span>Cancel & Back</span>
           </button>
           <h2 className="font-sans text-xl font-bold tracking-tight text-zinc-100 mt-1">
-            Manual Combo Builder
+            {isEditing ? (keepId ? 'Edit Combo' : 'Edit a Copy') : 'Manual Combo Builder'}
           </h2>
           <p className="text-xs text-zinc-500 font-mono uppercase tracking-wider">
-            Create custom branching lines & export them to JSON
+            {isEditing
+              ? (keepId ? 'Editing this combo in place' : 'Saving will create a new editable copy')
+              : 'Create custom branching lines & export them to JSON'}
           </p>
         </div>
 
@@ -288,7 +337,7 @@ export function ComboCreator({
             className="flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 px-4 py-2 text-xs font-semibold text-white transition-all active:scale-[0.98] shadow-md shadow-indigo-600/10"
           >
             <FloppyDisk size={14} />
-            <span>Save to Playbook</span>
+            <span>{isEditing ? 'Save Changes' : 'Save to Playbook'}</span>
           </button>
         </div>
       </div>
@@ -467,7 +516,7 @@ export function ComboCreator({
           </div>
 
           <div className="space-y-4 max-h-[600px] overflow-y-auto pr-1 custom-scrollbar">
-            {steps.map((step) => (
+            {steps.map((step, index) => (
               <div key={step.id} className="relative rounded-xl border border-zinc-900 bg-zinc-950 p-4 space-y-4">
                 {/* Step ID Header */}
                 <div className="flex justify-between items-center border-b border-zinc-900 pb-2">
@@ -477,13 +526,31 @@ export function ComboCreator({
                     </span>
                     <span className="text-xs font-bold text-zinc-200">Play node</span>
                   </div>
-                  <button
-                    onClick={() => removeStep(step.id)}
-                    className="text-zinc-600 hover:text-red-400 p-1 transition-colors"
-                    title="Delete step node"
-                  >
-                    <Trash size={14} />
-                  </button>
+                  <div className="flex items-center gap-0.5">
+                    <button
+                      onClick={() => moveStep(index, -1)}
+                      disabled={index === 0}
+                      className="text-zinc-600 hover:text-zinc-300 disabled:opacity-30 disabled:hover:text-zinc-600 p-1 transition-colors"
+                      title="Move step up"
+                    >
+                      <CaretUp size={14} />
+                    </button>
+                    <button
+                      onClick={() => moveStep(index, 1)}
+                      disabled={index === steps.length - 1}
+                      className="text-zinc-600 hover:text-zinc-300 disabled:opacity-30 disabled:hover:text-zinc-600 p-1 transition-colors"
+                      title="Move step down"
+                    >
+                      <CaretDown size={14} />
+                    </button>
+                    <button
+                      onClick={() => removeStep(step.id)}
+                      className="text-zinc-600 hover:text-red-400 p-1 transition-colors"
+                      title="Delete step node"
+                    >
+                      <Trash size={14} />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Grid Fields */}
@@ -610,7 +677,11 @@ export function ComboCreator({
               </div>
 
               <div className="max-h-[220px] overflow-y-auto border border-zinc-900 rounded p-2 space-y-1 custom-scrollbar bg-zinc-950/60">
-                {allUniqueDeckCards.map(card => {
+                {allUniqueDeckCards.filter(card => {
+                  // Only show monster-type cards; keep cards of unknown type visible so nothing hides silently.
+                  const t = cardDetails[card.id]?.type?.toLowerCase();
+                  return !t || t.includes('monster');
+                }).map(card => {
                   const isSelected = endBoardMonsters.includes(card.id);
                   return (
                     <button
@@ -639,7 +710,11 @@ export function ComboCreator({
               </div>
 
               <div className="max-h-[220px] overflow-y-auto border border-zinc-900 rounded p-2 space-y-1 custom-scrollbar bg-zinc-950/60">
-                {allUniqueDeckCards.filter(c => !c.isExtra).map(card => {
+                {allUniqueDeckCards.filter(c => !c.isExtra).filter(card => {
+                  // Only show spell/trap cards; keep unknown-type cards visible.
+                  const t = cardDetails[card.id]?.type?.toLowerCase();
+                  return !t || t.includes('spell') || t.includes('trap');
+                }).map(card => {
                   const isSelected = endBoardSpellsTraps.includes(card.id);
                   return (
                     <button

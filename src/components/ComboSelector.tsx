@@ -4,7 +4,7 @@ import React, { useRef } from 'react';
 import { ComboRoute, DeckList, DeckProfile, YGOPROCardDetails } from '../types';
 import { CARD_REGISTRY } from '../data/cards';
 import { probabilityToOpenCombo, probabilityToBrick } from '../engine/probability';
-import { Play, Tag, Lightbulb, UploadSimple, DownloadSimple, ShareNetwork, Plus, ChartBar, Brain, Hand } from '@phosphor-icons/react';
+import { Play, Tag, Lightbulb, UploadSimple, DownloadSimple, ShareNetwork, Plus, ChartBar, Brain, Hand, PencilSimple, Trash } from '@phosphor-icons/react';
 import { DeckRoleBreakdown } from './DeckRoleBreakdown';
 
 const EFFICIENCY_STYLES: Record<string, string> = {
@@ -19,6 +19,8 @@ interface ComboSelectorProps {
   onGenerateAI: () => void;
   isAiGenerating: boolean;
   onExportRoute?: (route: ComboRoute) => void;
+  onEditRoute?: (route: ComboRoute) => void;
+  onDeleteRoute?: (route: ComboRoute) => void;
   onShareRoute?: (route: ComboRoute) => void;
   sharedRouteId?: string | null;
   onImportCombo?: (files: File[]) => void;
@@ -43,6 +45,8 @@ export function ComboSelector({
   onGenerateAI,
   isAiGenerating,
   onExportRoute,
+  onEditRoute,
+  onDeleteRoute,
   onShareRoute,
   sharedRouteId,
   onImportCombo,
@@ -137,6 +141,32 @@ export function ComboSelector({
                         title="Export Combo JSON"
                       >
                         <DownloadSimple size={12} />
+                      </button>
+                    )}
+                    {onEditRoute && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEditRoute(route);
+                        }}
+                        className="rounded p-1 text-zinc-500 hover:text-indigo-300 hover:bg-zinc-900 border border-transparent hover:border-zinc-800 transition-all"
+                        title={customRouteIds.has(route.id) ? 'Edit this combo' : 'Edit a copy of this built-in combo'}
+                      >
+                        <PencilSimple size={12} />
+                      </button>
+                    )}
+                    {onDeleteRoute && customRouteIds.has(route.id) && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteRoute(route);
+                        }}
+                        className="rounded p-1 text-zinc-500 hover:text-red-400 hover:bg-zinc-900 border border-transparent hover:border-zinc-800 transition-all"
+                        title="Delete this combo"
+                      >
+                        <Trash size={12} />
                       </button>
                     )}
                     <span className="rounded bg-zinc-900 border border-zinc-800 px-2 py-0.5 text-[10px] font-mono text-zinc-400">
