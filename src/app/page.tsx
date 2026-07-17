@@ -420,8 +420,10 @@ export default function Home() {
     return nameMap;
   };
 
-  // Open hand selector instead of directly generating
+  // Open hand selector instead of directly generating.
+  // Requires a deck profile first — the AI combo prompt leans on the role map.
   const handleOpenHandSelector = () => {
+    if (!deckProfile) return;
     setIsHandSelectorOpen(true);
   };
 

@@ -268,7 +268,7 @@ export function ComboSelector({
         <button
           type="button"
           onClick={onGenerateAI}
-          disabled={isAiGenerating}
+          disabled={isAiGenerating || !hasDeckProfile}
           className="w-full flex items-center justify-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 disabled:text-zinc-500 disabled:cursor-not-allowed py-2 text-xs font-semibold text-white transition-all active:scale-[0.98] shadow-md shadow-indigo-600/10"
         >
           {isAiGenerating ? (
@@ -283,6 +283,11 @@ export function ComboSelector({
             </>
           )}
         </button>
+        {!hasDeckProfile && (
+          <p className="text-[10px] text-amber-400/80 leading-snug">
+            Run <span className="font-semibold">Analyze Deck Roles</span> first — the AI uses the role map to build optimal end boards.
+          </p>
+        )}
       </div>
 
       {/* Playbook Import/Export Panel */}

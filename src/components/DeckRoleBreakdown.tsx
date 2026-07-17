@@ -39,20 +39,21 @@ export function DeckRoleBreakdown({
   onCardMouseLeave,
   onCardMouseMove
 }: DeckRoleBreakdownProps) {
-  // Unique Main Deck card IDs, preserving order.
-  const uniqueMain = deck.main.filter((id, i) => deck.main.indexOf(id) === i);
+  // Unique card IDs across the whole deck (main + extra + side), preserving order.
+  const allIds = [...deck.main, ...deck.extra, ...deck.side];
+  const uniqueIds = allIds.filter((id, i) => allIds.indexOf(id) === i);
 
   return (
     <div className="rounded-xl border border-zinc-900 bg-zinc-950 p-4 space-y-4">
       <div className="space-y-0.5">
         <h4 className="text-xs font-semibold text-zinc-300">Card Roles by Category</h4>
         <p className="text-[10px] text-zinc-500">
-          What each Main Deck card does, grouped by its AI-classified function. Hover a card for its search targets.
+          What each card (Main, Extra & Side Deck) does, grouped by its AI-classified function. Hover a card for its search targets.
         </p>
       </div>
 
       {CATEGORY_ORDER.map(({ role, label }) => {
-        const cards = uniqueMain.filter(id => deckProfile.cards[id]?.roles?.includes(role));
+        const cards = uniqueIds.filter(id => deckProfile.cards[id]?.roles?.includes(role));
         if (cards.length === 0) return null;
 
         return (
