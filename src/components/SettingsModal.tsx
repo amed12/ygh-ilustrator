@@ -239,6 +239,11 @@ export function SettingsModal({ isOpen, onClose, settings, onSave }: SettingsMod
                     ))
                   )}
                 </select>
+                {provider === 'openrouter' && (
+                  <p className="mt-1.5 text-[11px] leading-snug text-zinc-500">
+                    🆓 free/small models often produce shallow combos (1-card end boards). For a fully-built end board, pick a ⭐ recommended model.
+                  </p>
+                )}
               </div>
 
               {/* API Key */}
