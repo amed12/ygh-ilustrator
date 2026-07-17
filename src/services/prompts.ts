@@ -104,6 +104,49 @@ function buildFullDetailSet(deckList: DeckList, deckProfile?: DeckProfile): Set<
   return full;
 }
 
+/**
+ * Renders the precompiled deck profile as a compact role map the combo AI can use as
+ * strategic guidance (which bosses/negates to build toward, which search chains reach them)
+ * instead of re-deriving everything from raw card text on every call.
+ */
+function buildDeckRoleMapSection(
+  deckList: DeckList,
+  cardDetails: Record<string, YGOPROCardDetails>,
+  deckProfile?: DeckProfile
+): string {
+  if (!deckProfile) return '';
+
+  const nameOf = (id: string) => cardDetails[id]?.name ?? id;
+  const lineFor = (id: string): string | null => {
+    const p = deckProfile.cards[id];
+    if (!p) return null;
+    const searches = p.searches?.length ? ` → searches: ${p.searches.map(nameOf).join(', ')}` : '';
+    return `  - ${nameOf(id)} (${id}): ${p.roles.join(', ')}${searches}`;
+  };
+  const sectionFor = (ids: string[]) =>
+    ids.filter((id, i) => ids.indexOf(id) === i).map(lineFor).filter(Boolean).join('\n');
+
+  const main = sectionFor(deckList.main);
+  const extra = sectionFor(deckList.extra);
+  const side = sectionFor(deckList.side);
+  if (!main && !extra && !side) return '';
+
+  return `
+════════════════════════════
+DECK ROLE MAP (precompiled analysis — use as strategic guidance):
+════════════════════════════
+Use this map to pick the strongest reachable end board (bosses/negates) and the search chains
+that get there. It is guidance, not gospel — still verify every play against the printed
+effect text above.
+MAIN DECK:
+${main || '  (none profiled)'}
+EXTRA DECK:
+${extra || '  (none profiled)'}
+SIDE DECK:
+${side || '  (none profiled)'}
+`;
+}
+
 function buildPromptSections(
   deckList: DeckList,
   handCards: string[],
@@ -185,6 +228,7 @@ export function buildComboPrompt(
 ): string {
   const { handSection, extraSection, mainSection, mainDeckOthers, sideSection, turnContext, sideDeckStrategy } =
     buildPromptSections(deckList, handCards, turnPosition, cardDetails, deckProfile);
+  const roleMapSection = buildDeckRoleMapSection(deckList, cardDetails, deckProfile);
 
   return `You are an elite-level competitive Yu-Gi-Oh! TCG / Master Duel deck analyst and professional combo architect.
 Your job is to generate a complete, deeply-analyzed combo route with a fully-crafted end board.
@@ -224,7 +268,7 @@ ${extraSection}
 MAIN DECK (${mainDeckOthers.length} remaining cards — not in hand):
 ════════════════════════════
 ${mainSection}
-
+${roleMapSection}
 ════════════════════════════
 SIDE DECK (${deckList.side.length} cards) — for game 2/3 analysis:
 ════════════════════════════
@@ -307,22 +351,26 @@ JSON SCHEMA:
 }
 
 /**
- * Builds a one-shot prompt asking the AI to compile a "deck profile": for every main-deck card,
- * its functional role(s) and what it can search from the Deck to the hand. This runs once per
- * deck (result is cached), so the adaptive matcher can work purely offline afterward — the AI
- * is a compiler here, not a runtime dependency.
+ * Builds a one-shot prompt asking the AI to compile a "deck profile": for every card in the
+ * deck (Main, Extra, and Side), its functional role(s) and what it can search from the Deck
+ * to the hand. This runs once per deck (result is cached), so the adaptive matcher can work
+ * purely offline afterward — the AI is a compiler here, not a runtime dependency.
  */
 export function buildDeckProfilePrompt(
   deckList: DeckList,
   cardDetails: Record<string, YGOPROCardDetails> = {}
 ): string {
-  const mainSection = deckList.main
-    .filter((id, i) => deckList.main.indexOf(id) === i) // unique
+  const uniqueSection = (ids: string[]) => ids
+    .filter((id, i) => ids.indexOf(id) === i) // unique
     .map(id => formatCardBlock(id, cardDetails[id], true))
     .join('\n');
 
-  return `You are a Yu-Gi-Oh! TCG / Master Duel deck analyst. Analyze ONLY the Main Deck cards
-below and classify each one's functional role(s) for combo-line matching purposes.
+  const mainSection = uniqueSection(deckList.main);
+  const extraSection = deckList.extra.length > 0 ? uniqueSection(deckList.extra) : '  (No extra deck cards)';
+  const sideSection = deckList.side.length > 0 ? uniqueSection(deckList.side) : '  (No side deck cards)';
+
+  return `You are a Yu-Gi-Oh! TCG / Master Duel deck analyst. Analyze ALL cards below (Main,
+Extra, and Side Deck) and classify each one's functional role(s) for combo-line matching purposes.
 
 ═══════════════════════════════════
 MAIN DECK (${deckList.main.length} cards) — FULL CARD EFFECTS:
@@ -330,9 +378,19 @@ MAIN DECK (${deckList.main.length} cards) — FULL CARD EFFECTS:
 ${mainSection}
 
 ═══════════════════════════════════
+EXTRA DECK (${deckList.extra.length} cards) — FULL CARD EFFECTS:
+═══════════════════════════════════
+${extraSection}
+
+═══════════════════════════════════
+SIDE DECK (${deckList.side.length} cards) — FULL CARD EFFECTS:
+═══════════════════════════════════
+${sideSection}
+
+═══════════════════════════════════
 TASK:
 ═══════════════════════════════════
-For EVERY card ID listed above, output an entry with:
+For EVERY card ID listed above (all three sections), output an entry with:
 1. "roles": one or more of this exact taxonomy:
    - "starter": can independently begin a combo from an empty board
    - "extender": continues/extends an existing line but can't start one alone (incl. cards that Special Summon themselves)
@@ -347,13 +405,16 @@ For EVERY card ID listed above, output an entry with:
    - "utility": useful tech/support that fits none of the above
    - "brick": dead card with no useful effect in a vacuum (and not a garnet — i.e. nothing in the deck wants it in the Deck either)
    A card may have several roles (e.g. a searcher that is also a starter).
+   EXTRA DECK cards are never "starter" or "hand-trap" — they are typically "boss", "extender",
+   "removal", "floodgate", "recovery", or "utility" depending on what they do once summoned.
 2. "searches": ONLY if the card's effect adds another card from the Deck to the hand — list
    the card ID(s) of what it can concretely search. If the effect is conditional/generic (e.g.
    "any Level 4 monster"), list every ID from the Main Deck above that plausibly qualifies. If
    a card cannot search anything, omit "searches" entirely or use an empty array.
+   Search targets must be MAIN DECK card IDs (search = Deck → hand).
 
 RULES:
-- Only use card IDs that appear in the Main Deck list above.
+- Only use card IDs that appear in the lists above.
 - Base every judgment strictly on the effect text given — do not use general knowledge of the
   card beyond what's printed here.
 - Do not invent search targets that aren't actually reachable by the printed effect.
@@ -388,6 +449,7 @@ export function buildMultiComboPrompt(
 ): string {
   const { handSection, extraSection, mainSection, mainDeckOthers, sideSection, turnContext, sideDeckStrategy } =
     buildPromptSections(deckList, handCards, turnPosition, cardDetails, deckProfile);
+  const roleMapSection = buildDeckRoleMapSection(deckList, cardDetails, deckProfile);
 
   return `You are an elite-level competitive Yu-Gi-Oh! TCG / Master Duel deck analyst and professional combo architect.
 Your job is to analyze this single opening hand and generate EVERY distinct, viable combo route it supports —
@@ -432,7 +494,7 @@ ${extraSection}
 MAIN DECK (${mainDeckOthers.length} remaining cards — not in hand):
 ════════════════════════════
 ${mainSection}
-
+${roleMapSection}
 ════════════════════════════
 SIDE DECK (${deckList.side.length} cards) — for game 2/3 analysis:
 ════════════════════════════

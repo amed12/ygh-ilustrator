@@ -37,9 +37,9 @@ export interface DeckProfileValidationResult {
 }
 
 /**
- * Validates a raw AI-generated deck profile against the imported deck's main deck cards.
- * Anti-hallucination: drops any card entry not actually in the main deck, and any search
- * target not in the main deck. Never hard-fails on a single bad entry — just drops it,
+ * Validates a raw AI-generated deck profile against the imported deck (main + extra + side).
+ * Anti-hallucination: drops any card entry not actually in the deck, and any search
+ * target not in the main deck (searches are Deck → hand). Never hard-fails on a single bad entry — just drops it,
  * since a profile with fewer entries degrades gracefully (those cards just don't get
  * search-graph edges) rather than blocking the whole feature.
  */
@@ -54,11 +54,12 @@ export function validateDeckProfile(raw: unknown, deckList: DeckList, deckHash: 
   }
 
   const mainDeckSet = new Set(deckList.main);
+  const allowedIdSet = new Set([...deckList.main, ...deckList.extra, ...deckList.side]);
   const rawCards = data.cards as Record<string, unknown>;
   const cards: Record<string, CardProfile> = {};
 
   for (const [cardId, rawProfile] of Object.entries(rawCards)) {
-    if (!mainDeckSet.has(cardId) || !rawProfile || typeof rawProfile !== 'object') continue;
+    if (!allowedIdSet.has(cardId) || !rawProfile || typeof rawProfile !== 'object') continue;
     const p = rawProfile as Record<string, unknown>;
 
     const roles = Array.isArray(p.roles)
