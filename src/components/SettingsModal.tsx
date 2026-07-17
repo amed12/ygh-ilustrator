@@ -15,6 +15,7 @@ interface SettingsModalProps {
 interface OpenRouterModel {
   id: string;
   name: string;
+  pricing?: { prompt?: string; completion?: string };
 }
 
 export function SettingsModal({ isOpen, onClose, settings, onSave }: SettingsModalProps) {
@@ -33,9 +34,14 @@ export function SettingsModal({ isOpen, onClose, settings, onSave }: SettingsMod
           const res = await fetch('https://openrouter.ai/api/v1/models');
           const data = await res.json();
           if (data && Array.isArray(data.data)) {
+            const isFree = (m: OpenRouterModel) =>
+              m.id.endsWith(':free') ||
+              (m.pricing?.prompt === '0' && m.pricing?.completion === '0');
+
             const fetched = data.data.map((m: OpenRouterModel) => ({
               id: m.id,
-              name: m.name || m.id
+              name: m.name || m.id,
+              free: isFree(m)
             }));
 
             // Priority list of best models for YGO logic
@@ -56,23 +62,23 @@ export function SettingsModal({ isOpen, onClose, settings, onSave }: SettingsMod
               return idx !== -1 ? idx : 9999;
             };
 
-            // Sort: recommended first, then alphabetically
-            fetched.sort((a: OpenRouterModel, b: OpenRouterModel) => {
-              const weightA = getModelWeight(a.id);
-              const weightB = getModelWeight(b.id);
+            // Sort: recommended first, then free models, then the rest alphabetically
+            fetched.sort((a: OpenRouterModel & { free: boolean }, b: OpenRouterModel & { free: boolean }) => {
+              const weightA = a.free ? getModelWeight(a.id) - 0.5 : getModelWeight(a.id);
+              const weightB = b.free ? getModelWeight(b.id) - 0.5 : getModelWeight(b.id);
               if (weightA !== weightB) return weightA - weightB;
               return a.name.localeCompare(b.name);
             });
 
-            const mappedModels = fetched.map((m: OpenRouterModel) => {
+            const mappedModels = fetched.map((m: OpenRouterModel & { free: boolean }) => {
               const weight = getModelWeight(m.id);
               if (weight !== 9999) {
-                return {
-                  id: m.id,
-                  name: `⭐ ${m.name} (Recommended)`
-                };
+                return { id: m.id, name: `⭐ ${m.name} (Recommended)` };
               }
-              return m;
+              if (m.free) {
+                return { id: m.id, name: `🆓 ${m.name} (Free)` };
+              }
+              return { id: m.id, name: m.name };
             });
 
             setOpenRouterModels(mappedModels);
