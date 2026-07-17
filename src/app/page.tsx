@@ -300,6 +300,13 @@ export default function Home() {
     setHoveredCardId(null);
   };
 
+  // Safety nets for stuck tooltips: mouseleave never fires when the hovered card is
+  // unmounted under the cursor (clicking a card in a list, closing a modal, list
+  // re-render), so also clear on any click and whenever the view or a modal changes.
+  useEffect(() => {
+    setHoveredCardId(null);
+  }, [view, isHandSelectorOpen, isComboSolverOpen, isSettingsOpen]);
+
   // Find routes matching current deck (static + generated custom routes)
   const getMatchingCombos = () => {
     if (!deckList) return [];
@@ -633,7 +640,7 @@ export default function Home() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen">
+    <div className="flex flex-col min-h-screen" onClickCapture={handleCardMouseLeave}>
       {/* Top Navbar */}
       <header className="sticky top-0 z-40 border-b border-zinc-900 bg-zinc-950/80 backdrop-blur-md px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
