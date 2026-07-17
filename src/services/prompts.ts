@@ -1,4 +1,4 @@
-import { DeckList, YGOPROCardDetails } from '../types';
+import { DeckList, DeckProfile, YGOPROCardDetails } from '../types';
 
 export type TurnPosition = 'going-first' | 'going-second';
 
@@ -50,7 +50,22 @@ RULES ENFORCEMENT (a route that violates any of these is INVALID, not just subop
 6. DO NOT FABRICATE INTERRUPTIONS. Every entry in endBoard.interruptions must correspond to an effect actually printed on a card that ends up on the field per the route — do not invent negates the deck doesn't have access to.`;
 
 /** Fixed taxonomy for endBoard.cardRoles — every surviving end-board card gets a tactical label. */
-const TACTICAL_ROLE_TAXONOMY = `negate-monster, negate-spell-trap, omni-negate, board-wipe, targeted-removal, protection, floodgate, attacker, recovery`;
+const TACTICAL_ROLE_TAXONOMY = `negate-monster, negate-spell-trap, omni-negate, board-wipe, targeted-removal, protection, floodgate, attacker, recovery, towers, follow-up, burn`;
+
+/** One-line definitions so the AI applies each tactical role consistently. */
+const TACTICAL_ROLE_DEFINITIONS = `TACTICAL ROLE DEFINITIONS (assign per end-board card):
+  - negate-monster: negates monster effects (e.g. targeted monster negate)
+  - negate-spell-trap: negates Spell/Trap activations
+  - omni-negate: can negate ANY card type (monster + spell + trap)
+  - board-wipe: destroys/removes multiple opponent cards at once
+  - targeted-removal: destroys/banishes/bounces a single targeted card
+  - protection: protects OTHER cards you control (destruction/targeting protection)
+  - towers: the card ITSELF is unaffected by (most) opponent card effects
+  - floodgate: continuous restriction on the opponent's actions (e.g. can't Special Summon, locks a card type)
+  - attacker: high-ATK beater / battle pressure
+  - recovery: recycles/recurs resources from GY or banishment
+  - follow-up: guarantees next-turn plays (searched combo piece, on-field starter for turn 3)
+  - burn: inflicts direct effect damage to the opponent`;
 
 interface PromptSections {
   handSection: string;
@@ -66,13 +81,38 @@ interface PromptSections {
  * Builds the shared card-data sections (hand/extra/main/side + turn/side strategy context)
  * used by both the single-combo and multi-combo prompt builders.
  */
+/** Roles that make a main-deck card combo-relevant enough to warrant its full effect text. */
+const COMBO_RELEVANT_ROLES = new Set(['starter', 'extender', 'searcher', 'recovery', 'boss']);
+
+/**
+ * Decides which non-hand main-deck cards get FULL effect text in the prompt.
+ * Deep combos route through cards searched/summoned FROM THE DECK — with only a
+ * one-sentence summary the AI cannot chain them, which is why end boards come out thin.
+ * With a deck profile: full text for starters/extenders/searchers/recovery/boss + every
+ * known search target. Without one: full text for everything (input tokens are cheap
+ * relative to a broken combo line).
+ */
+function buildFullDetailSet(deckList: DeckList, deckProfile?: DeckProfile): Set<string> {
+  if (!deckProfile) return new Set(deckList.main);
+  const full = new Set<string>();
+  for (const id of deckList.main) {
+    const profile = deckProfile.cards[id];
+    if (!profile) continue;
+    if (profile.roles.some(r => COMBO_RELEVANT_ROLES.has(r))) full.add(id);
+    for (const target of profile.searches ?? []) full.add(target);
+  }
+  return full;
+}
+
 function buildPromptSections(
   deckList: DeckList,
   handCards: string[],
   turnPosition: TurnPosition,
-  cardDetails: Record<string, YGOPROCardDetails>
+  cardDetails: Record<string, YGOPROCardDetails>,
+  deckProfile?: DeckProfile
 ): PromptSections {
   const handSet = new Set(handCards);
+  const fullDetailSet = buildFullDetailSet(deckList, deckProfile);
 
   // ── OPENING HAND (FULL EFFECT — most critical) ────────────────────────────
   const handSection = handCards.map(id =>
@@ -84,10 +124,10 @@ function buildPromptSections(
     formatCardBlock(id, cardDetails[id], true)
   ).join('\n');
 
-  // ── MAIN DECK (EFFECT SUMMARY — context, not in hand) ─────────────────────
+  // ── MAIN DECK (full effect for combo-relevant cards — combos chain THROUGH the deck) ──
   const mainDeckOthers = deckList.main.filter(id => !handSet.has(id));
   const mainSection = mainDeckOthers.map(id =>
-    formatCardBlock(id, cardDetails[id], false)
+    formatCardBlock(id, cardDetails[id], fullDetailSet.has(id))
   ).join('\n');
 
   // ── SIDE DECK (FULL EFFECT — game 2/3 strategy) ───────────────────────────
@@ -140,10 +180,11 @@ export function buildComboPrompt(
   cardNames: Record<string, string>,
   handCards: string[],
   turnPosition: TurnPosition,
-  cardDetails: Record<string, YGOPROCardDetails> = {}
+  cardDetails: Record<string, YGOPROCardDetails> = {},
+  deckProfile?: DeckProfile
 ): string {
   const { handSection, extraSection, mainSection, mainDeckOthers, sideSection, turnContext, sideDeckStrategy } =
-    buildPromptSections(deckList, handCards, turnPosition, cardDetails);
+    buildPromptSections(deckList, handCards, turnPosition, cardDetails, deckProfile);
 
   return `You are an elite-level competitive Yu-Gi-Oh! TCG / Master Duel deck analyst and professional combo architect.
 Your job is to generate a complete, deeply-analyzed combo route with a fully-crafted end board.
@@ -156,6 +197,7 @@ MISSION CRITICAL REQUIREMENTS (READ BEFORE ALL ELSE):
 3. END BOARD MUST BE FULLY CRAFTED. Specify every monster and spell/trap on the field at the end, and EXACTLY what interruption each one provides (negate type, destruction, banish, etc).
 4. INTERRUPTIONS MUST BE SPECIFIC AND REAL. Not "1 negate" — write "Raidraptor - Ultimate Falcon (unaffected by opponent's card effects, reduces all opponent monster ATK to 0 during opponent's turn)". Never invent a negate the resulting board doesn't actually have.
 5. BRANCHING FOR HAND TRAPS. Provide fallback branches for Ash Blossom, Maxx "C", Nibiru, and Impermanence on every key Special Summon.
+6. CHAIN THROUGH THE DECK. Deep combos route through cards searched or Special Summoned FROM THE DECK, not just the opening hand — after each search/summon, immediately consider what that new card enables, and keep extending the line until the board can no longer legally grow.
 
 ${RULES_ENFORCEMENT}
 
@@ -201,6 +243,8 @@ STRICT DESIGN RULES:
 8. EFFICIENCY RATING: Set "efficiency" to "optimal" if the end board is the strongest this hand can honestly produce with multiple real interruptions, "sub-optimal" if the line works but the board is below the deck's potential (e.g. compromised by a Maxx "C" branch, or only a secondary starter), or "brick" if the hand produces no meaningful board (set and pass).
 9. TACTICAL ROLES: For every card ID listed in endBoard.monsters or endBoard.spellsTraps, assign it 1+ tactical role(s) in endBoard.cardRoles using ONLY this exact taxonomy: ${TACTICAL_ROLE_TAXONOMY}.
 
+${TACTICAL_ROLE_DEFINITIONS}
+
 ═══════════════════════════════════
 OUTPUT FORMAT:
 ═══════════════════════════════════
@@ -237,7 +281,7 @@ JSON SCHEMA:
       "string (specific disruption — card name + exactly what it does, e.g. 'Raidraptor - Ultimate Falcon: unaffected by card effects, reduces all opponent monster ATK to 0 in opponent turn')"
     ],
     "cardRoles": {
-      "<card ID from monsters/spellsTraps>": ["negate-monster" | "negate-spell-trap" | "omni-negate" | "board-wipe" | "targeted-removal" | "protection" | "floodgate" | "attacker" | "recovery"]
+      "<card ID from monsters/spellsTraps>": ["negate-monster" | "negate-spell-trap" | "omni-negate" | "board-wipe" | "targeted-removal" | "protection" | "floodgate" | "attacker" | "recovery" | "towers" | "follow-up" | "burn"]
     }
   },
   "steps": [
@@ -289,11 +333,20 @@ ${mainSection}
 TASK:
 ═══════════════════════════════════
 For EVERY card ID listed above, output an entry with:
-1. "roles": one or more of this exact taxonomy: "starter" (can independently begin a combo),
-   "extender" (continues/extends an existing line but can't start one alone), "searcher"
-   (adds a card from the Deck to the hand), "hand-trap" (opponent's-turn interruption, e.g.
-   Ash Blossom, Maxx "C", Nibiru), "board-breaker" (removes/negates the opponent's cards from
-   your side), "brick" (dead card with no useful effect in a vacuum).
+1. "roles": one or more of this exact taxonomy:
+   - "starter": can independently begin a combo from an empty board
+   - "extender": continues/extends an existing line but can't start one alone (incl. cards that Special Summon themselves)
+   - "searcher": adds a card from the Deck to the hand
+   - "hand-trap": opponent's-turn interruption used from hand (e.g. Ash Blossom, Maxx "C", Nibiru)
+   - "board-breaker": removes/negates the OPPONENT's established cards (going-second tool, e.g. Lightning Storm, Evenly Matched)
+   - "floodgate": continuous restriction on the opponent's actions (e.g. Dimensional Barrier, There Can Be Only One)
+   - "removal": spot/mass removal used on your own turn that isn't a dedicated board-breaker
+   - "recovery": recycles/recurs resources from GY or banishment, or generates follow-up for later turns
+   - "boss": win condition / endgame monster the deck builds toward
+   - "garnet": required in the Deck as material/target for another card's effect, but dead when drawn (never intended to be in hand)
+   - "utility": useful tech/support that fits none of the above
+   - "brick": dead card with no useful effect in a vacuum (and not a garnet — i.e. nothing in the deck wants it in the Deck either)
+   A card may have several roles (e.g. a searcher that is also a starter).
 2. "searches": ONLY if the card's effect adds another card from the Deck to the hand — list
    the card ID(s) of what it can concretely search. If the effect is conditional/generic (e.g.
    "any Level 4 monster"), list every ID from the Main Deck above that plausibly qualifies. If
@@ -309,7 +362,7 @@ OUTPUT FORMAT:
 Respond with ONLY a valid raw JSON object. No markdown, no backticks, no explanation.
 {
   "cards": {
-    "<card ID>": { "roles": ["starter" | "extender" | "searcher" | "hand-trap" | "board-breaker" | "brick"], "searches": ["<card ID>", "..."] }
+    "<card ID>": { "roles": ["starter" | "extender" | "searcher" | "hand-trap" | "board-breaker" | "floodgate" | "removal" | "recovery" | "boss" | "garnet" | "utility" | "brick"], "searches": ["<card ID>", "..."] }
   }
 }`;
 }
@@ -330,10 +383,11 @@ export function buildMultiComboPrompt(
   cardNames: Record<string, string>,
   handCards: string[],
   turnPosition: TurnPosition,
-  cardDetails: Record<string, YGOPROCardDetails> = {}
+  cardDetails: Record<string, YGOPROCardDetails> = {},
+  deckProfile?: DeckProfile
 ): string {
   const { handSection, extraSection, mainSection, mainDeckOthers, sideSection, turnContext, sideDeckStrategy } =
-    buildPromptSections(deckList, handCards, turnPosition, cardDetails);
+    buildPromptSections(deckList, handCards, turnPosition, cardDetails, deckProfile);
 
   return `You are an elite-level competitive Yu-Gi-Oh! TCG / Master Duel deck analyst and professional combo architect.
 Your job is to analyze this single opening hand and generate EVERY distinct, viable combo route it supports —
@@ -350,6 +404,7 @@ MISSION CRITICAL REQUIREMENTS (READ BEFORE ALL ELSE):
 5. END BOARD MUST BE FULLY CRAFTED for each route. Specify every monster and spell/trap on the field at the end, and EXACTLY what interruption each one provides (negate type, destruction, banish, etc).
 6. INTERRUPTIONS MUST BE SPECIFIC AND REAL. Not "1 negate" — write "Raidraptor - Ultimate Falcon (unaffected by opponent's card effects, reduces all opponent monster ATK to 0 during opponent's turn)". Never invent a negate the resulting board doesn't actually have.
 7. BRANCHING FOR HAND TRAPS. Within each route, provide fallback branches for Ash Blossom, Maxx "C", Nibiru, and Impermanence on every key Special Summon.
+8. CHAIN THROUGH THE DECK. Deep combos route through cards searched or Special Summoned FROM THE DECK, not just the opening hand — after each search/summon, immediately consider what that new card enables, and keep extending each line until its board can no longer legally grow.
 
 ${RULES_ENFORCEMENT}
 (Rules enforcement applies independently to EVERY route in the array — a route that's illegal on its own is invalid even if other routes in the array are fine.)
@@ -397,6 +452,8 @@ STRICT DESIGN RULES (apply to EVERY route in the array):
 9. EFFICIENCY RATING: Set each route's "efficiency" to "optimal" if its end board is the strongest that starter can honestly produce with multiple real interruptions, "sub-optimal" if the line works but the board is below the deck's potential, or "brick" if it produces no meaningful board.
 10. TACTICAL ROLES: For every card ID listed in a route's endBoard.monsters or endBoard.spellsTraps, assign it 1+ tactical role(s) in endBoard.cardRoles using ONLY this exact taxonomy: ${TACTICAL_ROLE_TAXONOMY}.
 
+${TACTICAL_ROLE_DEFINITIONS}
+
 ═══════════════════════════════════
 OUTPUT FORMAT:
 ═══════════════════════════════════
@@ -427,7 +484,7 @@ JSON SCHEMA (array of these):
         "string (specific disruption — card name + exactly what it does, e.g. 'Raidraptor - Ultimate Falcon: unaffected by card effects, reduces all opponent monster ATK to 0 in opponent turn')"
       ],
       "cardRoles": {
-        "<card ID from monsters/spellsTraps>": ["negate-monster" | "negate-spell-trap" | "omni-negate" | "board-wipe" | "targeted-removal" | "protection" | "floodgate" | "attacker" | "recovery"]
+        "<card ID from monsters/spellsTraps>": ["negate-monster" | "negate-spell-trap" | "omni-negate" | "board-wipe" | "targeted-removal" | "protection" | "floodgate" | "attacker" | "recovery" | "towers" | "follow-up" | "burn"]
       }
     },
     "steps": [

@@ -449,7 +449,8 @@ export default function Home() {
         cardNames,
         solverHand,
         solverTurn,
-        cardDetails
+        cardDetails,
+        deckProfile ?? undefined
       );
       
       // Store hand context for all generated routes

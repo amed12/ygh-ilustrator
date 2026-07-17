@@ -110,9 +110,10 @@ export async function generateAICombo(
   settings: AISettings,
   handCards: string[],
   turnPosition: TurnPosition,
-  cardDetails: Record<string, YGOPROCardDetails> = {}
+  cardDetails: Record<string, YGOPROCardDetails> = {},
+  deckProfile?: DeckProfile
 ): Promise<ComboRoute> {
-  const prompt = buildComboPrompt(deckList, cardNames, handCards, turnPosition, cardDetails);
+  const prompt = buildComboPrompt(deckList, cardNames, handCards, turnPosition, cardDetails, deckProfile);
   const responseText = await callProvider(settings, prompt, 'single', deckList, cardNames, handCards, turnPosition);
 
   if (!responseText) {
@@ -153,9 +154,10 @@ export async function generateMultipleAICombos(
   cardNames: Record<string, string>,
   handCards: string[],
   turnPosition: TurnPosition,
-  cardDetails: Record<string, YGOPROCardDetails> = {}
+  cardDetails: Record<string, YGOPROCardDetails> = {},
+  deckProfile?: DeckProfile
 ): Promise<ComboRoute[]> {
-  const prompt = buildMultiComboPrompt(deckList, cardNames, handCards, turnPosition, cardDetails);
+  const prompt = buildMultiComboPrompt(deckList, cardNames, handCards, turnPosition, cardDetails, deckProfile);
   const rawText = await callProvider(settings, prompt, 'multi', deckList, cardNames, handCards, turnPosition);
 
   if (!rawText) throw new Error('AI returned empty response.');
@@ -338,10 +340,13 @@ async function callProvider(
       // OpenRouter says the account can pay for ("can only afford N tokens").
       const errText = await r.text();
       const affordable = Math.min(...[...errText.matchAll(/can only afford (\d+)/g)].map(m => Number(m[1])));
-      if (Number.isFinite(affordable) && affordable >= 2000) {
+      // Below ~4000 output tokens the combo JSON is guaranteed to truncate — fail loudly
+      // instead of returning a silently shallow/broken route.
+      if (Number.isFinite(affordable) && affordable >= 4000) {
+        console.warn(`OpenRouter credits are low: retrying with max_tokens=${Math.floor(affordable * 0.9)} (wanted 16000). Combo depth may suffer — top up at https://openrouter.ai/settings/credits or pick a cheaper/free model.`);
         r = await callOpenRouter(Math.floor(affordable * 0.9));
       } else {
-        throw new Error(`OpenRouter API Error (402): ${errText}`);
+        throw new Error(`OpenRouter credits are too low to generate a complete combo (needs ≥4000 output tokens). Top up at https://openrouter.ai/settings/credits or switch to a 🆓 free model in Settings. Original error: ${errText}`);
       }
     }
     if (!r.ok) throw new Error(`OpenRouter API Error (${r.status}): ${await r.text()}`);
