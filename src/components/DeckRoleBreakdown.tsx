@@ -22,6 +22,12 @@ const CATEGORY_ORDER: { role: CardRole; label: string }[] = [
   { role: 'searcher', label: 'Searchers' },
   { role: 'hand-trap', label: 'Hand-Traps' },
   { role: 'board-breaker', label: 'Board-Breakers' },
+  { role: 'floodgate', label: 'Floodgates' },
+  { role: 'removal', label: 'Removal' },
+  { role: 'recovery', label: 'Recovery' },
+  { role: 'boss', label: 'Bosses' },
+  { role: 'garnet', label: 'Garnets' },
+  { role: 'utility', label: 'Utility' },
   { role: 'brick', label: 'Bricks' },
 ];
 

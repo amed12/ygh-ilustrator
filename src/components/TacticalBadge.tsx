@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { ShieldStar, Bomb, Crosshair, ShieldCheck, LockKey, Sword, Heart, Prohibit } from '@phosphor-icons/react';
+import { ShieldStar, Bomb, Crosshair, ShieldCheck, LockKey, Sword, Heart, Prohibit, CastleTurret, ArrowClockwise, Fire } from '@phosphor-icons/react';
 import { TacticalRole } from '../types';
 
 const ROLE_STYLES: Record<TacticalRole, string> = {
@@ -14,6 +14,9 @@ const ROLE_STYLES: Record<TacticalRole, string> = {
   'floodgate': 'bg-purple-500/10 text-purple-300 border-purple-500/30 shadow-[0_0_10px_rgba(168,85,247,0.35)]',
   'attacker': 'bg-rose-500/10 text-rose-300 border-rose-500/25',
   'recovery': 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25',
+  'towers': 'bg-sky-500/10 text-sky-300 border-sky-500/30 shadow-[0_0_10px_rgba(14,165,233,0.35)]',
+  'follow-up': 'bg-teal-500/10 text-teal-300 border-teal-500/25',
+  'burn': 'bg-orange-500/10 text-orange-300 border-orange-500/30',
 };
 
 const ROLE_ICONS: Record<TacticalRole, React.ElementType> = {
@@ -26,6 +29,9 @@ const ROLE_ICONS: Record<TacticalRole, React.ElementType> = {
   'floodgate': LockKey,
   'attacker': Sword,
   'recovery': Heart,
+  'towers': CastleTurret,
+  'follow-up': ArrowClockwise,
+  'burn': Fire,
 };
 
 const ROLE_LABELS: Record<TacticalRole, string> = {
@@ -38,6 +44,9 @@ const ROLE_LABELS: Record<TacticalRole, string> = {
   'floodgate': 'Floodgate',
   'attacker': 'Attacker',
   'recovery': 'Recovery',
+  'towers': 'Towers',
+  'follow-up': 'Follow-Up',
+  'burn': 'Burn',
 };
 
 interface TacticalBadgeProps {

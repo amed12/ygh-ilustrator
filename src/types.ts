@@ -36,7 +36,10 @@ export type TacticalRole =
   | 'protection'
   | 'floodgate'
   | 'attacker'
-  | 'recovery';
+  | 'recovery'
+  | 'towers'
+  | 'follow-up'
+  | 'burn';
 
 export interface EndBoard {
   monsters: string[];
@@ -96,7 +99,19 @@ export interface PlaybookExportFile {
 }
 
 /** Functional role(s) a card plays for adaptive-matcher search-graph purposes. */
-export type CardRole = 'starter' | 'extender' | 'searcher' | 'hand-trap' | 'board-breaker' | 'brick';
+export type CardRole =
+  | 'starter'
+  | 'extender'
+  | 'searcher'
+  | 'hand-trap'
+  | 'board-breaker'
+  | 'floodgate'
+  | 'removal'
+  | 'recovery'
+  | 'boss'
+  | 'garnet'
+  | 'utility'
+  | 'brick';
 
 export interface CardProfile {
   cardId: string;

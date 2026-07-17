@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Rocket, ArrowsOut, MagnifyingGlass, HandPalm, Hammer, Warning } from '@phosphor-icons/react';
+import { Rocket, ArrowsOut, MagnifyingGlass, HandPalm, Hammer, Warning, LockKey, Crosshair, ArrowClockwise, Crown, Diamond, Wrench } from '@phosphor-icons/react';
 import { CardRole } from '../types';
 
 const ROLE_STYLES: Record<CardRole, string> = {
@@ -10,6 +10,12 @@ const ROLE_STYLES: Record<CardRole, string> = {
   'searcher': 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25',
   'hand-trap': 'bg-amber-500/10 text-amber-300 border-amber-500/25',
   'board-breaker': 'bg-red-500/10 text-red-300 border-red-500/25',
+  'floodgate': 'bg-purple-500/10 text-purple-300 border-purple-500/25',
+  'removal': 'bg-orange-500/10 text-orange-300 border-orange-500/25',
+  'recovery': 'bg-teal-500/10 text-teal-300 border-teal-500/25',
+  'boss': 'bg-yellow-500/10 text-yellow-300 border-yellow-500/30 shadow-[0_0_10px_rgba(234,179,8,0.35)]',
+  'garnet': 'bg-pink-500/10 text-pink-300 border-pink-500/25',
+  'utility': 'bg-slate-500/10 text-slate-300 border-slate-500/25',
   'brick': 'bg-zinc-700/20 text-zinc-400 border-zinc-600/30',
 };
 
@@ -19,6 +25,12 @@ const ROLE_ICONS: Record<CardRole, React.ElementType> = {
   'searcher': MagnifyingGlass,
   'hand-trap': HandPalm,
   'board-breaker': Hammer,
+  'floodgate': LockKey,
+  'removal': Crosshair,
+  'recovery': ArrowClockwise,
+  'boss': Crown,
+  'garnet': Diamond,
+  'utility': Wrench,
   'brick': Warning,
 };
 
@@ -28,6 +40,12 @@ const ROLE_LABELS: Record<CardRole, string> = {
   'searcher': 'Searcher',
   'hand-trap': 'Hand-Trap',
   'board-breaker': 'Breaker',
+  'floodgate': 'Floodgate',
+  'removal': 'Removal',
+  'recovery': 'Recovery',
+  'boss': 'Boss',
+  'garnet': 'Garnet',
+  'utility': 'Utility',
   'brick': 'Brick',
 };
 

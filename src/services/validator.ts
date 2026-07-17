@@ -9,7 +9,10 @@ const VALID_TACTICAL_ROLES = new Set<TacticalRole>([
   'protection',
   'floodgate',
   'attacker',
-  'recovery'
+  'recovery',
+  'towers',
+  'follow-up',
+  'burn'
 ]);
 
 const VALID_CARD_ROLES = new Set<CardRole>([
@@ -18,6 +21,12 @@ const VALID_CARD_ROLES = new Set<CardRole>([
   'searcher',
   'hand-trap',
   'board-breaker',
+  'floodgate',
+  'removal',
+  'recovery',
+  'boss',
+  'garnet',
+  'utility',
   'brick'
 ]);
 
