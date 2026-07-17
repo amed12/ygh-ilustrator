@@ -323,15 +323,27 @@ async function callProvider(
     const j = await r.json();
     responseText = j.content?.[0]?.text || '';
   } else if (provider === 'openrouter') {
-    const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const callOpenRouter = (maxTokens: number) => fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json', 'Authorization': `Bearer ${key}`,
         'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : '',
         'X-Title': 'Yu-Gi-Oh Combo Engine'
       },
-      body: JSON.stringify({ model, max_tokens: 16000, messages: [{ role: 'user', content: prompt }] })
+      body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] })
     });
+    let r = await callOpenRouter(16000);
+    if (r.status === 402) {
+      // Low-credit accounts can't afford the full budget; retry with what
+      // OpenRouter says the account can pay for ("can only afford N tokens").
+      const errText = await r.text();
+      const affordable = Math.min(...[...errText.matchAll(/can only afford (\d+)/g)].map(m => Number(m[1])));
+      if (Number.isFinite(affordable) && affordable >= 2000) {
+        r = await callOpenRouter(Math.floor(affordable * 0.9));
+      } else {
+        throw new Error(`OpenRouter API Error (402): ${errText}`);
+      }
+    }
     if (!r.ok) throw new Error(`OpenRouter API Error (${r.status}): ${await r.text()}`);
     const j = await r.json();
     responseText = j.choices?.[0]?.message?.content || '';
