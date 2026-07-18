@@ -56,7 +56,8 @@ export const ACTION_TEMPLATES: ActionTemplateGroup[] = [
   {
     group: 'Search / Draw',
     templates: [
-      { label: 'Search', phrase: 'search {card} (add from Deck to hand)' },
+      { label: 'Search', phrase: 'search {card}' },
+      { label: 'Add from Deck', phrase: 'add {card} from the Deck to your hand' },
       { label: 'Add from GY', phrase: 'add {card} from the GY to your hand' },
       { label: 'Draw 1', phrase: 'draw 1 card' },
       { label: 'Excavate/Reveal', phrase: 'reveal {card}' },
