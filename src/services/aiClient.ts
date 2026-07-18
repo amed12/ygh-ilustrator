@@ -1,6 +1,15 @@
 import { AISettings, ComboRoute, DeckList, DeckProfile, YGOPROCardDetails } from '../types';
-import { buildComboPrompt, buildMultiComboPrompt, buildDeckProfilePrompt, TurnPosition } from './prompts';
-import { validateComboRoute, validateDeckProfile } from './validator';
+import {
+  buildComboPrompt,
+  buildMultiComboPrompt,
+  buildDeckProfilePrompt,
+  buildComboSketchPrompt,
+  buildExtendComboPrompt,
+  buildRepairComboPrompt,
+  ComboLineSketch,
+  TurnPosition
+} from './prompts';
+import { validateComboRoute, validateDeckProfile, replayComboRoute } from './validator';
 
 /**
  * Cleans the LLM response to remove markdown backticks (e.g. ```json ... ```)
@@ -63,6 +72,24 @@ function tryRepairJson(raw: string): string {
   for (let i = 0; i < openBraces; i++) repaired += '}';
 
   return repaired;
+}
+
+/**
+ * Cleans and parses an LLM JSON response, repairing token-truncated output as a fallback.
+ * Throws with a snippet of the raw text when the payload is unrecoverable.
+ */
+function parseJsonPayload(rawText: string, context: string): unknown {
+  const cleaned = cleanJsonResponse(rawText);
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const repaired = tryRepairJson(cleaned);
+    try {
+      return JSON.parse(repaired);
+    } catch {
+      throw new Error(`AI returned invalid JSON (${context}): ${cleaned.substring(0, 200)}...`);
+    }
+  }
 }
 
 /**
@@ -143,12 +170,211 @@ export async function generateAICombo(
   return validation.data!;
 }
 
+/** Max distinct lines expanded per solver run — mirrors the sketch prompt's "at most 4". */
+const MAX_SKETCH_LINES = 4;
+/** Max "can this board still grow?" follow-up calls per route. */
+const MAX_EXTENSION_PASSES = 2;
+
 /**
- * Generates ALL possible combo lines from the opening hand in a single AI call.
- * Returns an array of validated ComboRoute objects.
- * Partial failures are skipped and logged — at least 1 valid combo must be returned.
+ * Generates ALL viable combo lines from the opening hand.
+ *
+ * Deep-line pipeline (one shallow one-shot call was the root cause of thin AI combos):
+ *  1. SKETCH — one cheap call enumerates the distinct viable lines (name/starter/goal only).
+ *  2. EXPAND — one dedicated call per line, so the full output-token budget buys depth for
+ *     a single route instead of being split across four.
+ *  3. REPLAY + REPAIR — each route is mechanically replayed against its own stateMutations;
+ *     violations go back to the model once for correction instead of being silently accepted.
+ *  4. EXTEND — the model is shown its own final board state and asked to keep extending the
+ *     main line until no legal play remains (up to MAX_EXTENSION_PASSES).
+ *
+ * Falls back to the legacy single-call multi-route path if the sketch phase fails.
  */
 export async function generateMultipleAICombos(
+  settings: AISettings,
+  deckList: DeckList,
+  cardNames: Record<string, string>,
+  handCards: string[],
+  turnPosition: TurnPosition,
+  cardDetails: Record<string, YGOPROCardDetails> = {},
+  deckProfile?: DeckProfile
+): Promise<ComboRoute[]> {
+  let sketches: ComboLineSketch[] = [];
+  try {
+    const raw = await callProvider(
+      settings,
+      buildComboSketchPrompt(deckList, cardNames, handCards, turnPosition, cardDetails, deckProfile),
+      'sketch', deckList, cardNames, handCards, turnPosition, cardDetails, { deckProfile }
+    );
+    sketches = sanitizeSketches(parseJsonPayload(raw, 'sketch'), handCards);
+  } catch (e) {
+    console.warn('Sketch phase failed — falling back to legacy single-call generation.', e);
+  }
+
+  if (sketches.length > 0) {
+    const results = await Promise.all(
+      sketches.slice(0, MAX_SKETCH_LINES).map(sketch =>
+        generateDeepRoute(settings, deckList, cardNames, handCards, turnPosition, cardDetails, deckProfile, sketch)
+          .catch((e: unknown) => {
+            console.warn(`Line "${sketch.name}" failed to generate — skipping.`, e);
+            return null;
+          })
+      )
+    );
+    const routes = dedupeRouteIds(results.filter((r): r is ComboRoute => r !== null));
+    if (routes.length > 0) return routes;
+    console.warn('All sketched lines failed — falling back to legacy single-call generation.');
+  }
+
+  return generateMultipleAICombosLegacy(settings, deckList, cardNames, handCards, turnPosition, cardDetails, deckProfile);
+}
+
+/** Keeps only well-formed sketches whose starters actually come from the sampled hand. */
+function sanitizeSketches(parsed: unknown, handCards: string[]): ComboLineSketch[] {
+  const handSet = new Set(handCards);
+  const lines = (parsed as { lines?: unknown })?.lines;
+  if (!Array.isArray(lines)) return [];
+  const sketches: ComboLineSketch[] = [];
+  for (const line of lines) {
+    if (!line || typeof line !== 'object') continue;
+    const l = line as Record<string, unknown>;
+    const starterCardIds = Array.isArray(l.starterCardIds)
+      ? l.starterCardIds.map(String).filter(id => handSet.has(id))
+      : [];
+    if (typeof l.name !== 'string' || !l.name.trim() || starterCardIds.length === 0) continue;
+    sketches.push({ name: l.name.trim(), starterCardIds, goal: String(l.goal ?? '') });
+  }
+  return sketches;
+}
+
+/** Route ids are model-chosen and generated in parallel — suffix collisions instead of dropping routes. */
+function dedupeRouteIds(routes: ComboRoute[]): ComboRoute[] {
+  const seen = new Set<string>();
+  return routes.map(route => {
+    let id = route.id;
+    for (let n = 2; seen.has(id); n++) id = `${route.id}-${n}`;
+    seen.add(id);
+    return id === route.id ? route : { ...route, id };
+  });
+}
+
+/**
+ * Expands one sketched line into a full route, then runs the replay/repair and extend loops.
+ */
+async function generateDeepRoute(
+  settings: AISettings,
+  deckList: DeckList,
+  cardNames: Record<string, string>,
+  handCards: string[],
+  turnPosition: TurnPosition,
+  cardDetails: Record<string, YGOPROCardDetails>,
+  deckProfile: DeckProfile | undefined,
+  sketch: ComboLineSketch
+): Promise<ComboRoute> {
+  const prompt = buildComboPrompt(deckList, cardNames, handCards, turnPosition, cardDetails, deckProfile, sketch);
+  const raw = await callProvider(
+    settings, prompt, 'route', deckList, cardNames, handCards, turnPosition, cardDetails,
+    { deckProfile, lineFocus: sketch }
+  );
+  const validation = validateComboRoute(parseJsonPayload(raw, `route "${sketch.name}"`), deckList);
+  if (!validation.valid || !validation.data) {
+    throw new Error(`Route "${sketch.name}" failed validation:\n${validation.errors.join('\n')}`);
+  }
+
+  let route = await repairRouteIfNeeded(
+    settings, deckList, cardNames, handCards, turnPosition, cardDetails, deckProfile, validation.data
+  );
+  route = await extendRoute(
+    settings, deckList, cardNames, handCards, turnPosition, cardDetails, deckProfile, route
+  );
+  return route;
+}
+
+/**
+ * Replays the route; on violations, gives the model ONE shot at fixing them. Keeps whichever
+ * version replays with fewer violations, so a bad repair can't make things worse.
+ */
+async function repairRouteIfNeeded(
+  settings: AISettings,
+  deckList: DeckList,
+  cardNames: Record<string, string>,
+  handCards: string[],
+  turnPosition: TurnPosition,
+  cardDetails: Record<string, YGOPROCardDetails>,
+  deckProfile: DeckProfile | undefined,
+  route: ComboRoute
+): Promise<ComboRoute> {
+  const replay = replayComboRoute(route, deckList, handCards);
+  if (replay.valid) return route;
+
+  try {
+    const raw = await callProvider(
+      settings,
+      buildRepairComboPrompt(deckList, cardNames, handCards, turnPosition, cardDetails, deckProfile, route, replay.errors),
+      'repair', deckList, cardNames, handCards, turnPosition, cardDetails,
+      { deckProfile, route, replayErrors: replay.errors }
+    );
+    const validation = validateComboRoute(parseJsonPayload(raw, `repair of "${route.name}"`), deckList);
+    if (validation.valid && validation.data) {
+      const repairedReplay = replayComboRoute(validation.data, deckList, handCards);
+      if (repairedReplay.errors.length < replay.errors.length) return validation.data;
+    }
+  } catch (e) {
+    console.warn(`Repair call for "${route.name}" failed — keeping the original route.`, e);
+  }
+
+  console.warn(`Route "${route.name}" still has replay violations after repair:\n${replay.errors.join('\n')}`);
+  return route;
+}
+
+/**
+ * Shows the model its own final board state and asks it to keep extending the main line —
+ * repeats until it answers {"done": true}, the extension stops growing, or the pass cap hits.
+ * An extension is only accepted if it doesn't introduce new replay violations.
+ */
+async function extendRoute(
+  settings: AISettings,
+  deckList: DeckList,
+  cardNames: Record<string, string>,
+  handCards: string[],
+  turnPosition: TurnPosition,
+  cardDetails: Record<string, YGOPROCardDetails>,
+  deckProfile: DeckProfile | undefined,
+  route: ComboRoute
+): Promise<ComboRoute> {
+  let current = route;
+  for (let pass = 0; pass < MAX_EXTENSION_PASSES; pass++) {
+    const replay = replayComboRoute(current, deckList, handCards);
+    let parsed: unknown;
+    try {
+      const raw = await callProvider(
+        settings,
+        buildExtendComboPrompt(deckList, cardNames, handCards, turnPosition, cardDetails, deckProfile, current, replay.finalState),
+        'extend', deckList, cardNames, handCards, turnPosition, cardDetails,
+        { deckProfile, route: current, finalState: replay.finalState }
+      );
+      parsed = parseJsonPayload(raw, `extension of "${current.name}"`);
+    } catch (e) {
+      console.warn(`Extension pass ${pass + 1} for "${current.name}" failed — keeping the route as is.`, e);
+      break;
+    }
+
+    if ((parsed as { done?: boolean })?.done) break;
+
+    const validation = validateComboRoute(parsed, deckList);
+    if (!validation.valid || !validation.data || validation.data.steps.length <= current.steps.length) break;
+    const extendedReplay = replayComboRoute(validation.data, deckList, handCards);
+    if (extendedReplay.errors.length > replay.errors.length) break;
+    current = validation.data;
+  }
+  return current;
+}
+
+/**
+ * Legacy path: ALL combo lines from one AI call. Kept as the fallback when the deep-line
+ * pipeline can't complete (e.g. sketch phase rejected by the provider).
+ * Partial failures are skipped and logged — at least 1 valid combo must be returned.
+ */
+async function generateMultipleAICombosLegacy(
   settings: AISettings,
   deckList: DeckList,
   cardNames: Record<string, string>,
@@ -248,12 +474,15 @@ export async function generateDeckProfile(
 async function callProvider(
   settings: AISettings,
   prompt: string,
-  mode: 'single' | 'multi' | 'profile',
+  mode: 'single' | 'multi' | 'profile' | 'sketch' | 'route' | 'extend' | 'repair',
   deckList: DeckList,
   cardNames: Record<string, string>,
   handCards: string[],
   turnPosition: TurnPosition,
-  cardDetails?: Record<string, YGOPROCardDetails>
+  cardDetails?: Record<string, YGOPROCardDetails>,
+  // Extra pipeline payload (deckProfile / lineFocus / route / finalState / replayErrors) —
+  // demo mode rebuilds prompts server-side, so these must travel with the request.
+  extras?: Record<string, unknown>
 ): Promise<string> {
   if (settings.useDemo) {
     const response = await fetch('/api/generate', {
@@ -265,7 +494,8 @@ async function callProvider(
         handCards,
         turnPosition,
         mode,
-        cardDetails
+        cardDetails,
+        ...(extras ?? {})
       })
     });
 

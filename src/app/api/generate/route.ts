@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { buildComboPrompt, buildMultiComboPrompt, buildDeckProfilePrompt, TurnPosition } from '../../../services/prompts';
-import { YGOPROCardDetails } from '../../../types';
+import {
+  buildComboPrompt,
+  buildMultiComboPrompt,
+  buildDeckProfilePrompt,
+  buildComboSketchPrompt,
+  buildExtendComboPrompt,
+  buildRepairComboPrompt,
+  ComboLineSketch,
+  ReplayFinalState,
+  TurnPosition
+} from '../../../services/prompts';
+import { ComboRoute, DeckProfile, YGOPROCardDetails } from '../../../types';
 
 // ── Rate limiting (in-memory, per-instance) ──────────────────────────────────
 // The demo mode shares a single server-side GEMINI_API_KEY across all visitors.
@@ -8,7 +18,10 @@ import { YGOPROCardDetails } from '../../../types';
 // the serverless instance recycles, so it is not a substitute for a proper
 // distributed limiter, but it stops a single client from hammering the key.
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
-const RATE_LIMIT_MAX_REQUESTS = 10;
+// One deep-line solver run now fans out into multiple calls (1 sketch + up to 4 routes,
+// each with optional repair/extend follow-ups ≈ up to ~13 calls), so the per-IP budget
+// covers roughly 3 solver runs per window instead of 10 single-shot generations.
+const RATE_LIMIT_MAX_REQUESTS = 40;
 const requestLog = new Map<string, number[]>();
 
 function getClientIp(req: NextRequest): string {
@@ -48,6 +61,8 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
     const { deckList, cardNames, handCards, turnPosition, mode, cardDetails } = body;
+    // Deep-line pipeline payload (all optional; validated per-mode below)
+    const { deckProfile, lineFocus, route, finalState, replayErrors } = body;
 
     if (!deckList || !cardNames) {
       return NextResponse.json(
@@ -85,12 +100,44 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Build the correct system prompt (single, multi, or one-shot deck profile)
-    const prompt = mode === 'profile'
-      ? buildDeckProfilePrompt(deckList, resolvedCardDetails)
-      : mode === 'multi'
-        ? buildMultiComboPrompt(deckList, cardNames, resolvedHand, resolvedTurn, resolvedCardDetails)
-        : buildComboPrompt(deckList, cardNames, resolvedHand, resolvedTurn, resolvedCardDetails);
+    // Optional deep-line payload — trusted only as prompt-building context, never executed.
+    const resolvedProfile: DeckProfile | undefined =
+      deckProfile && typeof deckProfile === 'object' && deckProfile.cards ? deckProfile as DeckProfile : undefined;
+    const resolvedLineFocus: ComboLineSketch | undefined =
+      lineFocus && typeof lineFocus === 'object' && typeof lineFocus.name === 'string' && Array.isArray(lineFocus.starterCardIds)
+        ? { name: String(lineFocus.name).slice(0, 100), starterCardIds: lineFocus.starterCardIds.map(String).slice(0, MAX_HAND_CARDS), goal: String(lineFocus.goal ?? '').slice(0, 500) }
+        : undefined;
+    const resolvedRoute: ComboRoute | undefined =
+      route && typeof route === 'object' && Array.isArray(route.steps) ? route as ComboRoute : undefined;
+    const resolvedFinalState: ReplayFinalState | undefined =
+      finalState && typeof finalState === 'object' && Array.isArray(finalState.field)
+        ? finalState as ReplayFinalState
+        : undefined;
+    const resolvedReplayErrors: string[] =
+      Array.isArray(replayErrors) ? replayErrors.map(String).slice(0, 50) : [];
+
+    // Build the correct prompt for the requested pipeline phase.
+    let prompt: string;
+    if (mode === 'profile') {
+      prompt = buildDeckProfilePrompt(deckList, resolvedCardDetails);
+    } else if (mode === 'multi') {
+      prompt = buildMultiComboPrompt(deckList, cardNames, resolvedHand, resolvedTurn, resolvedCardDetails, resolvedProfile);
+    } else if (mode === 'sketch') {
+      prompt = buildComboSketchPrompt(deckList, cardNames, resolvedHand, resolvedTurn, resolvedCardDetails, resolvedProfile);
+    } else if (mode === 'extend') {
+      if (!resolvedRoute || !resolvedFinalState) {
+        return NextResponse.json({ error: 'Mode "extend" requires route and finalState.' }, { status: 400 });
+      }
+      prompt = buildExtendComboPrompt(deckList, cardNames, resolvedHand, resolvedTurn, resolvedCardDetails, resolvedProfile, resolvedRoute, resolvedFinalState);
+    } else if (mode === 'repair') {
+      if (!resolvedRoute || resolvedReplayErrors.length === 0) {
+        return NextResponse.json({ error: 'Mode "repair" requires route and replayErrors.' }, { status: 400 });
+      }
+      prompt = buildRepairComboPrompt(deckList, cardNames, resolvedHand, resolvedTurn, resolvedCardDetails, resolvedProfile, resolvedRoute, resolvedReplayErrors);
+    } else {
+      // 'single' and 'route' — one full route; 'route' additionally focuses on a sketched line.
+      prompt = buildComboPrompt(deckList, cardNames, resolvedHand, resolvedTurn, resolvedCardDetails, resolvedProfile, resolvedLineFocus);
+    }
 
     // Call Gemini API using process.env.GEMINI_API_KEY
     // Default to a fast/cheap model for the public demo to prevent excessive costs
