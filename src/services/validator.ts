@@ -360,3 +360,145 @@ export function validateComboRoute(raw: unknown, deckList: DeckList): Validation
     errors: []
   };
 }
+
+// ─── State replay ─────────────────────────────────────────────────────────────
+
+import { ReplayFinalState } from './prompts';
+
+export interface ReplayResult {
+  valid: boolean;
+  errors: string[];
+  finalState: ReplayFinalState;
+  /** How many main-line steps carried stateMutations and were actually verified. */
+  checkedSteps: number;
+}
+
+/** Pseudo card IDs that don't live in the deck and are exempt from state accounting. */
+const PSEUDO_IDS = new Set(['TOKEN', 'OPPONENT', 'NONE']);
+
+type Zone = 'hand' | 'field' | 'gy' | 'banished';
+const ZONES: Zone[] = ['hand', 'field', 'gy', 'banished'];
+
+function countInc(m: Map<string, number>, id: string, delta: number): void {
+  m.set(id, (m.get(id) ?? 0) + delta);
+}
+
+function expand(m: Map<string, number>): string[] {
+  const out: string[] = [];
+  for (const [id, n] of m) for (let i = 0; i < n; i++) out.push(id);
+  return out;
+}
+
+/**
+ * Mechanically replays a route's MAIN success line against its own stateMutations.
+ * This is deliberately lightweight (no effect semantics) but catches the failure modes that
+ * schema validation cannot: removing a card from a zone it isn't in, summoning more copies
+ * than the deck contains, a second Normal Summon, and an endBoard that doesn't match the
+ * final field. Steps without stateMutations are skipped (legacy/manual routes degrade
+ * gracefully). Violations are meant to be sent back to the model via the repair prompt —
+ * not silently accepted.
+ */
+export function replayComboRoute(
+  route: ComboRoute,
+  deckList: DeckList,
+  handCards: string[]
+): ReplayResult {
+  const errors: string[] = [];
+
+  // Total copies of each card across the whole deck — a zone can never hold more.
+  const totalCopies = new Map<string, number>();
+  for (const id of [...deckList.main, ...deckList.extra, ...deckList.side]) {
+    countInc(totalCopies, id, 1);
+  }
+
+  const zones: Record<Zone, Map<string, number>> = {
+    hand: new Map(),
+    field: new Map(),
+    gy: new Map(),
+    banished: new Map()
+  };
+  for (const id of handCards) countInc(zones.hand, id, 1);
+
+  const inZones = (id: string) => ZONES.reduce((sum, z) => sum + (zones[z].get(id) ?? 0), 0);
+
+  // Walk the main success line (cycle-safe — schema validation also rejects cycles).
+  const stepById = new Map(route.steps.map(s => [s.id, s]));
+  const visited = new Set<number>();
+  let checkedSteps = 0;
+  let normalSummons = 0;
+  let currentId: number | null = route.steps[0]?.id ?? null;
+
+  while (currentId !== null && !visited.has(currentId)) {
+    visited.add(currentId);
+    const step = stepById.get(currentId);
+    if (!step) break;
+
+    // Normal Summon budget — one per turn unless the action claims an additional one.
+    if (/\bnormal summon\b/i.test(step.action) && !/additional normal summon|cannot normal summon/i.test(step.action)) {
+      normalSummons++;
+      if (normalSummons > 1) {
+        errors.push(`Step ${step.id}: performs a second Normal Summon ("${step.action.slice(0, 80)}") — only one Normal Summon/Set is allowed per turn.`);
+      }
+    }
+
+    const mut = step.stateMutations;
+    const hasMutations = mut && ZONES.some(z => mut[z] && (mut[z].add.length > 0 || mut[z].remove.length > 0));
+    if (mut && hasMutations) {
+      checkedSteps++;
+
+      // Removes first — a card must actually be in the zone it is removed from.
+      const movedOut = new Map<string, number>();
+      for (const z of ZONES) {
+        for (const id of mut[z]?.remove ?? []) {
+          if (PSEUDO_IDS.has(id.toUpperCase())) continue;
+          if ((zones[z].get(id) ?? 0) > 0) {
+            countInc(zones[z], id, -1);
+            countInc(movedOut, id, 1);
+          } else {
+            errors.push(`Step ${step.id}: removes card ${id} from ${z}, but it is not in the ${z} at that point.`);
+          }
+        }
+      }
+
+      // Adds — either a move of a card removed this step, or a new copy from Deck/Extra
+      // (which must still exist: total in play can never exceed copies in the deck list).
+      for (const z of ZONES) {
+        for (const id of mut[z]?.add ?? []) {
+          if (PSEUDO_IDS.has(id.toUpperCase())) continue;
+          if ((movedOut.get(id) ?? 0) > 0) {
+            countInc(movedOut, id, -1);
+          } else if (inZones(id) + 1 > (totalCopies.get(id) ?? 0)) {
+            errors.push(`Step ${step.id}: puts card ${id} into ${z}, but every copy of it is already in use (deck contains ${totalCopies.get(id) ?? 0}).`);
+          }
+          countInc(zones[z], id, 1);
+        }
+      }
+    }
+
+    const success = step.responses?.find(r => r.trigger === 'success');
+    currentId = success ? success.next_step : null;
+  }
+
+  // End-board consistency — only meaningful when the route actually tracked state.
+  if (checkedSteps > 0 && route.endBoard) {
+    for (const id of [...route.endBoard.monsters, ...route.endBoard.spellsTraps]) {
+      if (PSEUDO_IDS.has(id.toUpperCase())) continue;
+      if ((zones.field.get(id) ?? 0) === 0) {
+        errors.push(`endBoard lists card ${id} on the final field, but replaying the steps' stateMutations never leaves it there.`);
+      }
+    }
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    finalState: {
+      hand: expand(zones.hand),
+      field: expand(zones.field),
+      gy: expand(zones.gy),
+      banished: expand(zones.banished),
+      normalSummonUsed: normalSummons > 0
+    },
+    checkedSteps
+  };
+}
