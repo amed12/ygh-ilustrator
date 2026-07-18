@@ -1,6 +1,22 @@
-import { DeckList, DeckProfile, YGOPROCardDetails } from '../types';
+import { ComboRoute, DeckList, DeckProfile, YGOPROCardDetails } from '../types';
 
 export type TurnPosition = 'going-first' | 'going-second';
+
+/** A cheap first-pass "sketch" of one viable combo line — expanded into a full route by a dedicated call. */
+export interface ComboLineSketch {
+  name: string;
+  starterCardIds: string[];
+  goal: string;
+}
+
+/** Snapshot of the replayed board state after a route's main line — fed to the extend prompt. */
+export interface ReplayFinalState {
+  hand: string[];
+  field: string[];
+  gy: string[];
+  banished: string[];
+  normalSummonUsed: boolean;
+}
 
 /**
  * Formats a single card's full data into a concise block for the AI prompt.
@@ -49,6 +65,20 @@ RULES ENFORCEMENT (a route that violates any of these is INVALID, not just subop
 5. NIBIRU TIMING. Nibiru, the Primal Being can only be activated once 5 or more monsters have been Summoned (Normal or Special, either player) this turn — do not place a "nibiru" branch before the 5th Summon in the line.
 6. DO NOT FABRICATE INTERRUPTIONS. Every entry in endBoard.interruptions must correspond to an effect actually printed on a card that ends up on the field per the route — do not invent negates the deck doesn't have access to.`;
 
+/**
+ * Explicit depth mandate. Without a quantitative target, models stop at the first coherent
+ * 3-5 step line even when the deck can keep extending — the single biggest cause of shallow,
+ * "sub-optimal" output compared to human-written playbook lines.
+ */
+const DEPTH_MANDATE = `═══════════════════════════════════════════════════════
+DEPTH MANDATE (shallow lines are a FAILURE, not a style choice):
+═══════════════════════════════════════════════════════
+1. Cards you search or Special Summon FROM THE DECK are extensions of your hand — "use hand cards honestly" NEVER means "stop at the 5 opening cards". After every search/summon, immediately ask what the new card enables and keep going.
+2. Do NOT end the main line while ANY legal extension exists: an unused search effect, a live Special Summon from Deck/GY, an Xyz/Synchro/Link play with materials on field, or an archetype support Spell/Trap that adds bodies or materials.
+3. A dedicated combo deck's honest main line is typically 10-20 steps and ends on MULTIPLE Extra Deck disruptions or a boss with real protection — a 3-5 step line that stops at the first Xyz/Synchro is almost always leaving plays on the table. Re-check the DECK ROLE MAP and Extra Deck before you conclude the board "cannot grow".
+4. Only stop early when a rule genuinely blocks every remaining play (all OPTs spent, no materials, no searches left) — and if so, say why in the description.
+5. This mandate applies to the MAIN success line. Fallback branches (Ash/Maxx "C"/Nibiru) may be short — never let a fallback consideration shorten the main line.`;
+
 /** Fixed taxonomy for endBoard.cardRoles — every surviving end-board card gets a tactical label. */
 const TACTICAL_ROLE_TAXONOMY = `negate-monster, negate-spell-trap, omni-negate, board-wipe, targeted-removal, protection, floodgate, attacker, recovery, towers, follow-up, burn`;
 
@@ -67,6 +97,44 @@ const TACTICAL_ROLE_DEFINITIONS = `TACTICAL ROLE DEFINITIONS (assign per end-boa
   - follow-up: guarantees next-turn plays (searched combo piece, on-field starter for turn 3)
   - burn: inflicts direct effect damage to the opponent`;
 
+/** Single-route JSON schema shared by the generate / extend / repair prompts. */
+const ROUTE_JSON_SCHEMA = `{
+  "id": "string (unique id, e.g. 'combo-rr-ultimate-falcon-line')",
+  "name": "string (descriptive name, max 50 chars)",
+  "archetype": "string (primary archetype of this deck)",
+  "description": "string (2-3 sentences: what the combo achieves, what cards are used, what the end board does)",
+  "requiredCards": ["string (card IDs from opening hand that are essential starters)"],
+  "endBoard": {
+    "monsters": ["string (card ID of each monster on field at end)"],
+    "spellsTraps": ["string (card ID of each set/active spell or trap at end)"],
+    "interruptions": [
+      "string (specific disruption — card name + exactly what it does, e.g. 'Raidraptor - Ultimate Falcon: unaffected by card effects, reduces all opponent monster ATK to 0 in opponent turn')"
+    ],
+    "cardRoles": {
+      "<card ID from monsters/spellsTraps>": ["negate-monster" | "negate-spell-trap" | "omni-negate" | "board-wipe" | "targeted-removal" | "protection" | "floodgate" | "attacker" | "recovery" | "towers" | "follow-up" | "burn"]
+    }
+  },
+  "steps": [
+    {
+      "id": 1,
+      "action": "string (clear human-readable instruction for this step)",
+      "cardId": "string (passcode of the card acting)",
+      "responses": [
+        { "trigger": "success", "next_step": 2 },
+        { "trigger": "maxx_c", "next_step": 4 }
+      ],
+      "stateMutations": {
+        "hand": { "add": [], "remove": ["card_id_used"] },
+        "field": { "add": ["card_id_summoned"], "remove": [] },
+        "gy": { "add": [], "remove": [] },
+        "banished": { "add": [], "remove": [] }
+      }
+    }
+  ],
+  "tags": ["going-first" | "going-second" | "otk" | "grind" | "defensive" | "side-in"],
+  "efficiency": "optimal" | "sub-optimal" | "brick"
+}`;
+
 interface PromptSections {
   handSection: string;
   extraSection: string;
@@ -82,7 +150,10 @@ interface PromptSections {
  * used by both the single-combo and multi-combo prompt builders.
  */
 /** Roles that make a main-deck card combo-relevant enough to warrant its full effect text. */
-const COMBO_RELEVANT_ROLES = new Set(['starter', 'extender', 'searcher', 'recovery', 'boss']);
+// 'utility' and 'removal' are included: archetype support spells/traps (field spells, equip
+// enablers, rank-up cards) are routinely classified 'utility', and truncating their text makes
+// deep lines that route through them impossible for the model to construct.
+const COMBO_RELEVANT_ROLES = new Set(['starter', 'extender', 'searcher', 'recovery', 'boss', 'utility', 'removal']);
 
 /**
  * Decides which non-hand main-deck cards get FULL effect text in the prompt.
@@ -224,15 +295,27 @@ export function buildComboPrompt(
   handCards: string[],
   turnPosition: TurnPosition,
   cardDetails: Record<string, YGOPROCardDetails> = {},
-  deckProfile?: DeckProfile
+  deckProfile?: DeckProfile,
+  lineFocus?: ComboLineSketch
 ): string {
   const { handSection, extraSection, mainSection, mainDeckOthers, sideSection, turnContext, sideDeckStrategy } =
     buildPromptSections(deckList, handCards, turnPosition, cardDetails, deckProfile);
   const roleMapSection = buildDeckRoleMapSection(deckList, cardDetails, deckProfile);
 
+  const lineFocusSection = lineFocus
+    ? `
+═══════════════════════════════════════
+ROUTE ASSIGNMENT (this call builds ONE specific line):
+═══════════════════════════════════════
+Build the line "${lineFocus.name}" — starter card ID(s): ${lineFocus.starterCardIds.join(', ')}.
+Goal: ${lineFocus.goal}
+Your ENTIRE output budget belongs to this one route — spend it on main-line depth first, then fallback branches. Do not describe alternative routes.
+`
+    : '';
+
   return `You are an elite-level competitive Yu-Gi-Oh! TCG / Master Duel deck analyst and professional combo architect.
 Your job is to generate a complete, deeply-analyzed combo route with a fully-crafted end board.
-
+${lineFocusSection}
 ═══════════════════════════════════════════════════════
 MISSION CRITICAL REQUIREMENTS (READ BEFORE ALL ELSE):
 ═══════════════════════════════════════════════════════
@@ -242,6 +325,8 @@ MISSION CRITICAL REQUIREMENTS (READ BEFORE ALL ELSE):
 4. INTERRUPTIONS MUST BE SPECIFIC AND REAL. Not "1 negate" — write "Raidraptor - Ultimate Falcon (unaffected by opponent's card effects, reduces all opponent monster ATK to 0 during opponent's turn)". Never invent a negate the resulting board doesn't actually have.
 5. BRANCHING FOR HAND TRAPS. Provide fallback branches for Ash Blossom, Maxx "C", Nibiru, and Impermanence on every key Special Summon.
 6. CHAIN THROUGH THE DECK. Deep combos route through cards searched or Special Summoned FROM THE DECK, not just the opening hand — after each search/summon, immediately consider what that new card enables, and keep extending the line until the board can no longer legally grow.
+
+${DEPTH_MANDATE}
 
 ${RULES_ENFORCEMENT}
 
@@ -280,7 +365,7 @@ STRICT DESIGN RULES:
 1. NO HALLUCINATION: Only use card IDs that appear in the deck lists above.
 2. NON-DECK CARDS: For tokens, set cardId to "TOKEN". For opponent's cards (e.g. Nibiru), use "OPPONENT". For generic actions, use "NONE".
 3. BRANCHING: Every step that involves a Special Summon MUST have response branches: "success", "ash_blossom" (or "imperm_veiler"), "nibiru" (after 5th summon), "maxx_c", and "generic_negate" where applicable.
-4. MAXX "C" EMERGENCY LINE: If going first, provide a fallback path triggered by "maxx_c" on the first Special Summon that establishes at least 1 disruption while minimizing further special summons.
+4. MAXX "C" EMERGENCY LINE: If going first, provide a SEPARATE fallback path triggered by "maxx_c" on the first Special Summon that establishes at least 1 disruption while minimizing further special summons. This minimization applies ONLY to that fallback branch — the main success line must stay at full depth as if Maxx "C" never resolved.
 5. STATE MUTATIONS: For every step, track hand/field/GY/banished changes in stateMutations. Accuracy is required.
 6. STEP IDs: Must be unique 1-indexed integers. No broken pointers. Last step in each branch must have next_step: null.
 7. ALL REQUIRED CARDS: The "requiredCards" array must list ONLY the card IDs from the opening hand that are essential starters.
@@ -312,42 +397,7 @@ EXAMPLE of correct branching (main path = steps 1-3, Maxx C fallback = steps 4-5
 All five step IDs (1,2,3,4,5) MUST be present in the steps array.
 
 JSON SCHEMA:
-{
-  "id": "string (unique id, e.g. 'combo-rr-ultimate-falcon-line')",
-  "name": "string (descriptive name, max 50 chars)",
-  "archetype": "string (primary archetype of this deck)",
-  "description": "string (2-3 sentences: what the combo achieves, what cards are used, what the end board does)",
-  "requiredCards": ["string (card IDs from opening hand that are essential starters)"],
-  "endBoard": {
-    "monsters": ["string (card ID of each monster on field at end)"],
-    "spellsTraps": ["string (card ID of each set/active spell or trap at end)"],
-    "interruptions": [
-      "string (specific disruption — card name + exactly what it does, e.g. 'Raidraptor - Ultimate Falcon: unaffected by card effects, reduces all opponent monster ATK to 0 in opponent turn')"
-    ],
-    "cardRoles": {
-      "<card ID from monsters/spellsTraps>": ["negate-monster" | "negate-spell-trap" | "omni-negate" | "board-wipe" | "targeted-removal" | "protection" | "floodgate" | "attacker" | "recovery" | "towers" | "follow-up" | "burn"]
-    }
-  },
-  "steps": [
-    {
-      "id": 1,
-      "action": "string (clear human-readable instruction for this step)",
-      "cardId": "string (passcode of the card acting)",
-      "responses": [
-        { "trigger": "success", "next_step": 2 },
-        { "trigger": "maxx_c", "next_step": 4 }
-      ],
-      "stateMutations": {
-        "hand": { "add": [], "remove": ["card_id_used"] },
-        "field": { "add": ["card_id_summoned"], "remove": [] },
-        "gy": { "add": [], "remove": [] },
-        "banished": { "add": [], "remove": [] }
-      }
-    }
-  ],
-  "tags": ["going-first" | "going-second" | "otk" | "grind" | "defensive" | "side-in"],
-  "efficiency": "optimal" | "sub-optimal" | "brick"
-}`;
+${ROUTE_JSON_SCHEMA}`;
 }
 
 /**
@@ -468,6 +518,9 @@ MISSION CRITICAL REQUIREMENTS (READ BEFORE ALL ELSE):
 7. BRANCHING FOR HAND TRAPS. Within each route, provide fallback branches for Ash Blossom, Maxx "C", Nibiru, and Impermanence on every key Special Summon.
 8. CHAIN THROUGH THE DECK. Deep combos route through cards searched or Special Summoned FROM THE DECK, not just the opening hand — after each search/summon, immediately consider what that new card enables, and keep extending each line until its board can no longer legally grow.
 
+${DEPTH_MANDATE}
+(The depth mandate applies to EVERY route's main line independently.)
+
 ${RULES_ENFORCEMENT}
 (Rules enforcement applies independently to EVERY route in the array — a route that's illegal on its own is invalid even if other routes in the array are fine.)
 
@@ -506,7 +559,7 @@ STRICT DESIGN RULES (apply to EVERY route in the array):
 1. NO HALLUCINATION: Only use card IDs that appear in the deck lists above.
 2. NON-DECK CARDS: For tokens, set cardId to "TOKEN". For opponent's cards (e.g. Nibiru), use "OPPONENT". For generic actions, use "NONE".
 3. BRANCHING: Every step that involves a Special Summon MUST have response branches: "success", "ash_blossom" (or "imperm_veiler"), "nibiru" (after 5th summon), "maxx_c", and "generic_negate" where applicable.
-4. MAXX "C" EMERGENCY LINE: If going first, provide a fallback path triggered by "maxx_c" on the first Special Summon that establishes at least 1 disruption while minimizing further special summons.
+4. MAXX "C" EMERGENCY LINE: If going first, provide a SEPARATE fallback path triggered by "maxx_c" on the first Special Summon that establishes at least 1 disruption while minimizing further special summons. This minimization applies ONLY to that fallback branch — the main success line must stay at full depth as if Maxx "C" never resolved.
 5. STATE MUTATIONS: For every step, track hand/field/GY/banished changes in stateMutations. Accuracy is required.
 6. STEP IDs: Within EACH route, step IDs must be unique 1-indexed integers local to that route (every route restarts numbering at 1). No broken pointers. Last step in each branch must have next_step: null.
 7. ALL REQUIRED CARDS: Each route's "requiredCards" array must list ONLY the card IDs from the opening hand that are essential starters for THAT route.
@@ -572,3 +625,193 @@ JSON SCHEMA (array of these):
 ]`;
 }
 
+
+/**
+ * Builds the cheap phase-1 "sketch" prompt: enumerate every distinct viable line this hand
+ * supports, WITHOUT generating steps. Each sketch is later expanded by its own dedicated
+ * buildComboPrompt call, so the full 16k output budget goes to ONE deep line instead of
+ * being split across 4 routes (the main structural cause of shallow AI combos).
+ */
+export function buildComboSketchPrompt(
+  deckList: DeckList,
+  cardNames: Record<string, string>,
+  handCards: string[],
+  turnPosition: TurnPosition,
+  cardDetails: Record<string, YGOPROCardDetails> = {},
+  deckProfile?: DeckProfile
+): string {
+  const { handSection, extraSection, mainSection, mainDeckOthers, turnContext } =
+    buildPromptSections(deckList, handCards, turnPosition, cardDetails, deckProfile);
+  const roleMapSection = buildDeckRoleMapSection(deckList, cardDetails, deckProfile);
+
+  return `You are an elite-level competitive Yu-Gi-Oh! TCG / Master Duel deck analyst.
+Identify EVERY distinct, viable combo line this opening hand supports. Do NOT write out the steps —
+only name each line, its essential starter card(s) from the hand, and the end board it should build toward.
+Different lines use different starters or fundamentally different Extra Deck payoffs — no near-duplicates.
+
+════════════════════════════════════════
+TURN POSITION & STRATEGIC OBJECTIVE:
+════════════════════════════════════════
+${turnContext}
+
+════════════════════════════
+OPENING HAND (${handCards.length} cards) — FULL CARD EFFECTS:
+════════════════════════════
+${handSection}
+
+════════════════════════════
+EXTRA DECK (${deckList.extra.length} cards) — FULL CARD EFFECTS:
+════════════════════════════
+${extraSection}
+
+════════════════════════════
+MAIN DECK (${mainDeckOthers.length} remaining cards — not in hand):
+════════════════════════════
+${mainSection}
+${roleMapSection}
+═══════════════════════════════════
+RULES:
+═══════════════════════════════════
+1. At least 1 line, at most 4. Order from strongest to weakest expected end board.
+2. "starterCardIds" must be card IDs from the OPENING HAND only.
+3. "goal" states the concrete end board to build toward (name the Extra Deck monsters / disruptions), remembering that cards searched or summoned FROM THE DECK are reachable extensions of the hand — aim for the deepest honest board, not the first available Xyz/Synchro.
+4. If the hand is a genuine brick, return one line with goal "set and pass" and name it accordingly.
+
+OUTPUT FORMAT:
+Respond with ONLY a valid raw JSON object. No markdown, no backticks, no explanation.
+{
+  "lines": [
+    { "name": "string (max 50 chars)", "starterCardIds": ["<hand card ID>"], "goal": "string (1-2 sentences: target end board and key disruptions)" }
+  ]
+}`;
+}
+
+/** Compact per-card "ID | Name" list so extend/repair prompts can reference the route without resending all effects. */
+function formatStateList(ids: string[], cardDetails: Record<string, YGOPROCardDetails>): string {
+  if (ids.length === 0) return '  (empty)';
+  return ids.map(id => `  - ${id} | ${cardDetails[id]?.name ?? 'Unknown'}`).join('\n');
+}
+
+/**
+ * Builds the iterative "extend" prompt: given an already-valid route and its replayed final
+ * board state, ask the model to either declare the line finished or return the SAME route with
+ * additional legal steps appended. This loop is what pushes past the model's first, shortest
+ * coherent answer — the human way of finding deep lines.
+ */
+export function buildExtendComboPrompt(
+  deckList: DeckList,
+  cardNames: Record<string, string>,
+  handCards: string[],
+  turnPosition: TurnPosition,
+  cardDetails: Record<string, YGOPROCardDetails>,
+  deckProfile: DeckProfile | undefined,
+  route: ComboRoute,
+  finalState: ReplayFinalState
+): string {
+  const { handSection, extraSection, mainSection, mainDeckOthers } =
+    buildPromptSections(deckList, handCards, turnPosition, cardDetails, deckProfile);
+  const roleMapSection = buildDeckRoleMapSection(deckList, cardDetails, deckProfile);
+
+  return `You are an elite-level competitive Yu-Gi-Oh! TCG / Master Duel combo architect reviewing YOUR OWN combo line for missed extensions.
+
+Here is the current route (JSON) and the exact board state after its final main-line step:
+
+CURRENT ROUTE:
+${JSON.stringify(route)}
+
+BOARD STATE AFTER THE LAST MAIN-LINE STEP:
+Normal Summon already used this turn: ${finalState.normalSummonUsed ? 'YES' : 'NO'}
+HAND:
+${formatStateList(finalState.hand, cardDetails)}
+FIELD:
+${formatStateList(finalState.field, cardDetails)}
+GY:
+${formatStateList(finalState.gy, cardDetails)}
+BANISHED:
+${formatStateList(finalState.banished, cardDetails)}
+
+════════════════════════════
+OPENING HAND (${handCards.length} cards) — FULL CARD EFFECTS:
+════════════════════════════
+${handSection}
+
+════════════════════════════
+EXTRA DECK (${deckList.extra.length} cards) — FULL CARD EFFECTS:
+════════════════════════════
+${extraSection}
+
+════════════════════════════
+MAIN DECK (${mainDeckOthers.length} remaining cards — not in hand):
+════════════════════════════
+${mainSection}
+${roleMapSection}
+${RULES_ENFORCEMENT}
+
+═══════════════════════════════════
+TASK:
+═══════════════════════════════════
+Scan the board state above for ANY legal play that strengthens the end board: an unused search or Special Summon effect (hand, field, GY, or Deck), an Xyz/Synchro/Link play with materials on field, an archetype Spell/Trap that adds bodies or disruption. Respect every rule above — do not reuse a spent OPT, do not use a second Normal Summon if one was used.
+
+- If at least one such play exists: respond with the COMPLETE UPDATED ROUTE JSON — the original steps unchanged, new steps appended to the main success line (continue step ID numbering; the previously-final step's "success" response now points to your first new step), endBoard and description updated to match the new final board. Track stateMutations accurately for every new step.
+- If NO legal extension exists: respond with exactly {"done": true, "reason": "string (which rule blocks every remaining play)"}.
+
+OUTPUT FORMAT:
+Respond with ONLY one valid raw JSON object (either the full route, or the done object). No markdown, no backticks, no explanation.
+Route schema reminder:
+${ROUTE_JSON_SCHEMA}`;
+}
+
+/**
+ * Builds the "repair" prompt: the route failed step-by-step state replay — send the exact
+ * violations back and ask for a corrected route, instead of silently accepting a line whose
+ * actions contradict its own state (the "action text argues with itself" failure mode).
+ */
+export function buildRepairComboPrompt(
+  deckList: DeckList,
+  cardNames: Record<string, string>,
+  handCards: string[],
+  turnPosition: TurnPosition,
+  cardDetails: Record<string, YGOPROCardDetails>,
+  deckProfile: DeckProfile | undefined,
+  route: ComboRoute,
+  replayErrors: string[]
+): string {
+  const { handSection, extraSection, mainSection, mainDeckOthers } =
+    buildPromptSections(deckList, handCards, turnPosition, cardDetails, deckProfile);
+  const roleMapSection = buildDeckRoleMapSection(deckList, cardDetails, deckProfile);
+
+  return `You are an elite-level competitive Yu-Gi-Oh! TCG / Master Duel combo architect. A combo route you produced FAILED mechanical state replay — the listed violations are facts computed from your own stateMutations, not opinions.
+
+FAILED ROUTE:
+${JSON.stringify(route)}
+
+REPLAY VIOLATIONS (each must be fixed):
+${replayErrors.map((e, i) => `${i + 1}. ${e}`).join('\n')}
+
+════════════════════════════
+OPENING HAND (${handCards.length} cards) — FULL CARD EFFECTS:
+════════════════════════════
+${handSection}
+
+════════════════════════════
+EXTRA DECK (${deckList.extra.length} cards) — FULL CARD EFFECTS:
+════════════════════════════
+${extraSection}
+
+════════════════════════════
+MAIN DECK (${mainDeckOthers.length} remaining cards — not in hand):
+════════════════════════════
+${mainSection}
+${roleMapSection}
+${RULES_ENFORCEMENT}
+
+═══════════════════════════════════
+TASK:
+═══════════════════════════════════
+Fix EVERY violation by re-sequencing, replacing, or removing the offending steps — keep the line as deep as legally possible (do not fix a violation by amputating the whole tail if a legal reroute exists). Keep the same route "id". Update steps, stateMutations, endBoard, and description so they are all mutually consistent.
+
+OUTPUT FORMAT:
+Respond with ONLY the corrected route as one valid raw JSON object. No markdown, no backticks, no explanation.
+Route schema:
+${ROUTE_JSON_SCHEMA}`;
+}
