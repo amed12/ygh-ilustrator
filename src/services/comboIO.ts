@@ -1,4 +1,11 @@
 import { ComboRoute, ComboHandContext, ComboExportFile, PlaybookExportFile, ComboStep, ComboResponse, StateMutations, EndBoard, TacticalRole, DeckProfile, CardProfile, CardRole } from '../types';
+import { VALID_ACTION_TYPES, ActionType } from '../data/actionTypes';
+
+function parseActionType(raw: unknown): ActionType | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const lower = raw.toLowerCase() as ActionType;
+  return VALID_ACTION_TYPES.has(lower) ? lower : undefined;
+}
 
 const VALID_TACTICAL_ROLES = new Set<TacticalRole>([
   'negate-monster', 'negate-spell-trap', 'omni-negate', 'board-wipe',
@@ -260,7 +267,8 @@ export function parseComboRouteRaw(raw: unknown): ComboRoute | null {
       action: String(step.action || ''),
       cardId: String(step.cardId || ''),
       responses: parseStepResponses(step),
-      stateMutations: parseStateMutations(step.stateMutations)
+      stateMutations: parseStateMutations(step.stateMutations),
+      actionType: parseActionType(step.actionType)
     })),
     tags: Array.isArray(routeObj.tags) ? routeObj.tags.map(String) : [],
     endBoard: parseEndBoard(routeObj.endBoard),

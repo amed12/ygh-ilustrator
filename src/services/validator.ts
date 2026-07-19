@@ -1,4 +1,11 @@
 import { ComboRoute, ComboStep, DeckList, ComboResponse, EndBoard, TacticalRole, DeckProfile, CardProfile, CardRole } from '../types';
+import { VALID_ACTION_TYPES, ActionType } from '../data/actionTypes';
+
+function parseActionType(raw: unknown): ActionType | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const lower = raw.toLowerCase() as ActionType;
+  return VALID_ACTION_TYPES.has(lower) ? lower : undefined;
+}
 
 const VALID_TACTICAL_ROLES = new Set<TacticalRole>([
   'negate-monster',
@@ -284,7 +291,8 @@ export function validateComboRoute(raw: unknown, deckList: DeckList): Validation
       action: String(rawStep.action || ''),
       cardId: String(rawStep.cardId || ''),
       responses: verifiedResponses,
-      stateMutations: verifiedMutations
+      stateMutations: verifiedMutations,
+      actionType: parseActionType((rawStep as Record<string, unknown>).actionType)
     });
   }
 
@@ -434,7 +442,11 @@ export function replayComboRoute(
     if (!step) break;
 
     // Normal Summon budget — one per turn unless the action claims an additional one.
-    if (/\bnormal summon\b/i.test(step.action) && !/additional normal summon|cannot normal summon/i.test(step.action)) {
+    // Prefer the structured actionType when present; fall back to regex for legacy/text-only routes.
+    const isNormalSummon = step.actionType
+      ? step.actionType === 'normal_summon'
+      : /\bnormal summon\b/i.test(step.action) && !/additional normal summon|cannot normal summon/i.test(step.action);
+    if (isNormalSummon) {
       normalSummons++;
       if (normalSummons > 1) {
         errors.push(`Step ${step.id}: performs a second Normal Summon ("${step.action.slice(0, 80)}") — only one Normal Summon/Set is allowed per turn.`);

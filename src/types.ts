@@ -24,7 +24,28 @@ export interface ComboStep {
   next_negated?: number | null; // Deprecated
   responses?: ComboResponse[];
   stateMutations?: StateMutations;
+  actionType?: ActionType;
 }
+
+/** Taxonomy of what mechanical action a combo step performs. See src/data/actionTypes.ts for icon/label metadata and inference. */
+export type ActionType =
+  | 'normal_summon'
+  | 'special_summon'
+  | 'xyz'
+  | 'synchro'
+  | 'link'
+  | 'fusion'
+  | 'ritual'
+  | 'activate'
+  | 'search'
+  | 'send_gy'
+  | 'discard'
+  | 'banish'
+  | 'set'
+  | 'tribute'
+  | 'return_hand'
+  | 'phase_marker'
+  | 'other';
 
 /** Taxonomy of the tactical job a surviving end-board card does. */
 export type TacticalRole =
