@@ -127,6 +127,7 @@ const ROUTE_JSON_SCHEMA = `{
       "id": 1,
       "action": "string (clear human-readable instruction for this step)",
       "cardId": "string (passcode of the card acting)",
+      "actionType": "normal_summon" | "special_summon" | "xyz" | "synchro" | "link" | "fusion" | "ritual" | "activate" | "search" | "send_gy" | "discard" | "banish" | "set" | "tribute" | "return_hand" | "phase_marker" | "other",
       "responses": [
         { "trigger": "success", "next_step": 2 },
         { "trigger": "maxx_c", "next_step": 4 }
@@ -388,6 +389,7 @@ STRICT DESIGN RULES:
 3. BRANCHING: Every step that involves a Special Summon MUST have response branches: "success", "ash_blossom" (or "imperm_veiler"), "nibiru" (after 5th summon), "maxx_c", and "generic_negate" where applicable.
 4. MAXX "C" EMERGENCY LINE: If going first, provide a SEPARATE fallback path triggered by "maxx_c" on the first Special Summon that establishes at least 1 disruption while minimizing further special summons. This minimization applies ONLY to that fallback branch — the main success line must stay at full depth as if Maxx "C" never resolved.
 5. STATE MUTATIONS: For every step, track hand/field/GY/banished changes in stateMutations. Accuracy is required.
+5b. ACTION TYPE: Classify every step with the single best "actionType" from the enum. Exactly one normal_summon on the main line unless a card explicitly grants an additional Normal Summon.
 6. STEP IDs: Must be unique 1-indexed integers. No broken pointers. Last step in each branch must have next_step: null.
 7. ALL REQUIRED CARDS: The "requiredCards" array must list ONLY the card IDs from the opening hand that are essential starters.
 8. EFFICIENCY RATING: Set "efficiency" to "optimal" if the end board is the strongest this hand can honestly produce with multiple real interruptions, "sub-optimal" if the line works but the board is below the deck's potential (e.g. compromised by a Maxx "C" branch, or only a secondary starter), or "brick" if the hand produces no meaningful board (set and pass).
@@ -582,6 +584,7 @@ STRICT DESIGN RULES (apply to EVERY route in the array):
 3. BRANCHING: Every step that involves a Special Summon MUST have response branches: "success", "ash_blossom" (or "imperm_veiler"), "nibiru" (after 5th summon), "maxx_c", and "generic_negate" where applicable.
 4. MAXX "C" EMERGENCY LINE: If going first, provide a SEPARATE fallback path triggered by "maxx_c" on the first Special Summon that establishes at least 1 disruption while minimizing further special summons. This minimization applies ONLY to that fallback branch — the main success line must stay at full depth as if Maxx "C" never resolved.
 5. STATE MUTATIONS: For every step, track hand/field/GY/banished changes in stateMutations. Accuracy is required.
+5b. ACTION TYPE: Classify every step with the single best "actionType" from the enum. Exactly one normal_summon on the main line unless a card explicitly grants an additional Normal Summon.
 6. STEP IDs: Within EACH route, step IDs must be unique 1-indexed integers local to that route (every route restarts numbering at 1). No broken pointers. Last step in each branch must have next_step: null.
 7. ALL REQUIRED CARDS: Each route's "requiredCards" array must list ONLY the card IDs from the opening hand that are essential starters for THAT route.
 8. DISTINCT IDs ACROSS ROUTES: Each route's top-level "id" string must be unique across the array (e.g. "combo-a-starter-line", "combo-b-starter-line").
@@ -628,6 +631,7 @@ JSON SCHEMA (array of these):
         "id": 1,
         "action": "string (clear human-readable instruction for this step)",
         "cardId": "string (passcode of the card acting)",
+        "actionType": "normal_summon" | "special_summon" | "xyz" | "synchro" | "link" | "fusion" | "ritual" | "activate" | "search" | "send_gy" | "discard" | "banish" | "set" | "tribute" | "return_hand" | "phase_marker" | "other",
         "responses": [
           { "trigger": "success", "next_step": 2 },
           { "trigger": "maxx_c", "next_step": 4 }
@@ -790,7 +794,7 @@ TASK:
 ═══════════════════════════════════
 ${targetGapSection}Scan the board state above for ANY legal play that strengthens the end board: an unused search or Special Summon effect (hand, field, GY, or Deck), an Xyz/Synchro/Link play with materials on field, an archetype Spell/Trap that adds bodies or disruption. Respect every rule above — do not reuse a spent OPT, do not use a second Normal Summon if one was used.
 
-- If at least one such play exists: respond with the COMPLETE UPDATED ROUTE JSON — the original steps unchanged, new steps appended to the main success line (continue step ID numbering; the previously-final step's "success" response now points to your first new step), endBoard and description updated to match the new final board. Track stateMutations accurately for every new step.
+- If at least one such play exists: respond with the COMPLETE UPDATED ROUTE JSON — the original steps unchanged, new steps appended to the main success line (continue step ID numbering; the previously-final step's "success" response now points to your first new step), endBoard and description updated to match the new final board. Track stateMutations accurately for every new step, and classify each new step's "actionType".
 - If NO legal extension exists: respond with exactly {"done": true, "reason": "string (which rule blocks every remaining play)"}.
 
 OUTPUT FORMAT:
@@ -846,7 +850,7 @@ ${RULES_ENFORCEMENT}
 ═══════════════════════════════════
 TASK:
 ═══════════════════════════════════
-Fix EVERY violation by re-sequencing, replacing, or removing the offending steps — keep the line as deep as legally possible (do not fix a violation by amputating the whole tail if a legal reroute exists). Keep the same route "id". Update steps, stateMutations, endBoard, and description so they are all mutually consistent.
+Fix EVERY violation by re-sequencing, replacing, or removing the offending steps — keep the line as deep as legally possible (do not fix a violation by amputating the whole tail if a legal reroute exists). Keep the same route "id". Update steps, stateMutations, endBoard, and description so they are all mutually consistent. Preserve or correct "actionType" on every step.
 
 OUTPUT FORMAT:
 Respond with ONLY the corrected route as one valid raw JSON object. No markdown, no backticks, no explanation.

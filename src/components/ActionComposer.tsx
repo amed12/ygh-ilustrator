@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { DeckList, DeckProfile, YGOPROCardDetails } from '../types';
+import { DeckList, DeckProfile, YGOPROCardDetails, ActionType } from '../types';
 import { ACTION_TEMPLATES, ActionTemplate } from '../data/actionTemplates';
 import { CardPickerModal } from './CardPickerModal';
 import { resolveCardName } from '../utils/cardName';
@@ -13,6 +13,8 @@ interface ActionComposerProps {
   onChange: (text: string) => void;
   /** Called when a card is picked into a phrase slot (lets the parent auto-set step.cardId). */
   onCardMentioned?: (cardId: string) => void;
+  /** Fired only for the FIRST typed segment's actionType — later chips (e.g. "tribute it") are costs and must not overwrite the classification. */
+  onActionTypeSuggested?: (actionType: ActionType) => void;
   deck: DeckList;
   cardDetails?: Record<string, YGOPROCardDetails>;
   deckProfile?: DeckProfile;
@@ -50,6 +52,7 @@ export function ActionComposer({
   value,
   onChange,
   onCardMentioned,
+  onActionTypeSuggested,
   deck,
   cardDetails = {},
   deckProfile,
@@ -68,6 +71,9 @@ export function ActionComposer({
   };
 
   const handleTemplateClick = (tpl: ActionTemplate) => {
+    if (segments.length === 0 && tpl.actionType) {
+      onActionTypeSuggested?.(tpl.actionType);
+    }
     if (tpl.phrase.includes('{card}')) {
       setPendingTemplate(tpl);
     } else {

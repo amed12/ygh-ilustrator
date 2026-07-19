@@ -9,6 +9,7 @@ import { TacticalBadge } from './TacticalBadge';
 import { CardPickerModal } from './CardPickerModal';
 import { ActionComposer } from './ActionComposer';
 import { resolveCardName } from '../utils/cardName';
+import { resolveActionType, ACTION_TYPE_META, VALID_ACTION_TYPES } from '../data/actionTypes';
 import {
   Plus, Trash, ArrowLeft, ArrowRight, FloppyDisk, DownloadSimple,
   CaretLeft, CaretRight, Check, PencilSimple
@@ -691,6 +692,7 @@ export function ComboCreator({
                       updateStepField(activeStep.id, 'cardId', cardId);
                     }
                   }}
+                  onActionTypeSuggested={(actionType) => updateStepField(activeStep.id, 'actionType', actionType)}
                   deck={deck}
                   cardDetails={cardDetails}
                   deckProfile={deckProfile}
@@ -698,6 +700,26 @@ export function ComboCreator({
                   onCardMouseLeave={onCardMouseLeave}
                   onCardMouseMove={onCardMouseMove}
                 />
+
+                <div className="mt-2">
+                  <label className="block text-[10px] font-mono text-zinc-500 uppercase mb-1">
+                    Action Type <span className="text-zinc-600 normal-case">(override)</span>
+                  </label>
+                  <select
+                    value={resolveActionType(activeStep) ?? ''}
+                    onChange={(e) => updateStepField(
+                      activeStep.id,
+                      'actionType',
+                      (e.target.value || undefined) as ComboStep['actionType']
+                    )}
+                    className="text-xs bg-zinc-900 border border-zinc-800 rounded px-2 py-1.5 text-zinc-200 focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="">(none / unclassified)</option>
+                    {Array.from(VALID_ACTION_TYPES).map(t => (
+                      <option key={t} value={t}>{ACTION_TYPE_META[t].label}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
             </div>
 
