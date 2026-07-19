@@ -103,9 +103,16 @@ export async function POST(req: NextRequest) {
     // Optional deep-line payload — trusted only as prompt-building context, never executed.
     const resolvedProfile: DeckProfile | undefined =
       deckProfile && typeof deckProfile === 'object' && deckProfile.cards ? deckProfile as DeckProfile : undefined;
+    const capIds = (v: unknown, max: number) => (Array.isArray(v) ? v.map(String).slice(0, max) : []);
     const resolvedLineFocus: ComboLineSketch | undefined =
       lineFocus && typeof lineFocus === 'object' && typeof lineFocus.name === 'string' && Array.isArray(lineFocus.starterCardIds)
-        ? { name: String(lineFocus.name).slice(0, 100), starterCardIds: lineFocus.starterCardIds.map(String).slice(0, MAX_HAND_CARDS), goal: String(lineFocus.goal ?? '').slice(0, 500) }
+        ? {
+            name: String(lineFocus.name).slice(0, 100),
+            starterCardIds: capIds(lineFocus.starterCardIds, MAX_HAND_CARDS),
+            goal: String(lineFocus.goal ?? '').slice(0, 500),
+            targetEndBoardIds: capIds(lineFocus.targetEndBoardIds, MAX_EXTRA_DECK),
+            keyCardIds: capIds(lineFocus.keyCardIds, MAX_HAND_CARDS)
+          }
         : undefined;
     const resolvedRoute: ComboRoute | undefined =
       route && typeof route === 'object' && Array.isArray(route.steps) ? route as ComboRoute : undefined;
@@ -128,7 +135,7 @@ export async function POST(req: NextRequest) {
       if (!resolvedRoute || !resolvedFinalState) {
         return NextResponse.json({ error: 'Mode "extend" requires route and finalState.' }, { status: 400 });
       }
-      prompt = buildExtendComboPrompt(deckList, cardNames, resolvedHand, resolvedTurn, resolvedCardDetails, resolvedProfile, resolvedRoute, resolvedFinalState);
+      prompt = buildExtendComboPrompt(deckList, cardNames, resolvedHand, resolvedTurn, resolvedCardDetails, resolvedProfile, resolvedRoute, resolvedFinalState, resolvedLineFocus?.targetEndBoardIds);
     } else if (mode === 'repair') {
       if (!resolvedRoute || resolvedReplayErrors.length === 0) {
         return NextResponse.json({ error: 'Mode "repair" requires route and replayErrors.' }, { status: 400 });

@@ -205,7 +205,7 @@ export async function generateMultipleAICombos(
       buildComboSketchPrompt(deckList, cardNames, handCards, turnPosition, cardDetails, deckProfile),
       'sketch', deckList, cardNames, handCards, turnPosition, cardDetails, { deckProfile }
     );
-    sketches = sanitizeSketches(parseJsonPayload(raw, 'sketch'), handCards);
+    sketches = sanitizeSketches(parseJsonPayload(raw, 'sketch'), handCards, deckList);
   } catch (e) {
     console.warn('Sketch phase failed — falling back to legacy single-call generation.', e);
   }
@@ -228,9 +228,14 @@ export async function generateMultipleAICombos(
   return generateMultipleAICombosLegacy(settings, deckList, cardNames, handCards, turnPosition, cardDetails, deckProfile);
 }
 
-/** Keeps only well-formed sketches whose starters actually come from the sampled hand. */
-function sanitizeSketches(parsed: unknown, handCards: string[]): ComboLineSketch[] {
+/**
+ * Keeps only well-formed sketches whose starters actually come from the sampled hand.
+ * Target/key card IDs are soft-validated against the deck (hallucinated IDs are dropped,
+ * the line itself survives) — they steer prompts, they are not legality data.
+ */
+function sanitizeSketches(parsed: unknown, handCards: string[], deckList: DeckList): ComboLineSketch[] {
   const handSet = new Set(handCards);
+  const deckSet = new Set([...deckList.main, ...deckList.extra, ...deckList.side]);
   const lines = (parsed as { lines?: unknown })?.lines;
   if (!Array.isArray(lines)) return [];
   const sketches: ComboLineSketch[] = [];
@@ -241,7 +246,14 @@ function sanitizeSketches(parsed: unknown, handCards: string[]): ComboLineSketch
       ? l.starterCardIds.map(String).filter(id => handSet.has(id))
       : [];
     if (typeof l.name !== 'string' || !l.name.trim() || starterCardIds.length === 0) continue;
-    sketches.push({ name: l.name.trim(), starterCardIds, goal: String(l.goal ?? '') });
+    const inDeck = (v: unknown) => (Array.isArray(v) ? v.map(String).filter(id => deckSet.has(id)) : []);
+    sketches.push({
+      name: l.name.trim(),
+      starterCardIds,
+      goal: String(l.goal ?? ''),
+      targetEndBoardIds: inDeck(l.targetEndBoardIds),
+      keyCardIds: inDeck(l.keyCardIds)
+    });
   }
   return sketches;
 }
@@ -284,7 +296,7 @@ async function generateDeepRoute(
     settings, deckList, cardNames, handCards, turnPosition, cardDetails, deckProfile, validation.data
   );
   route = await extendRoute(
-    settings, deckList, cardNames, handCards, turnPosition, cardDetails, deckProfile, route
+    settings, deckList, cardNames, handCards, turnPosition, cardDetails, deckProfile, route, sketch
   );
   return route;
 }
@@ -339,7 +351,8 @@ async function extendRoute(
   turnPosition: TurnPosition,
   cardDetails: Record<string, YGOPROCardDetails>,
   deckProfile: DeckProfile | undefined,
-  route: ComboRoute
+  route: ComboRoute,
+  sketch?: ComboLineSketch
 ): Promise<ComboRoute> {
   let current = route;
   for (let pass = 0; pass < MAX_EXTENSION_PASSES; pass++) {
@@ -348,9 +361,9 @@ async function extendRoute(
     try {
       const raw = await callProvider(
         settings,
-        buildExtendComboPrompt(deckList, cardNames, handCards, turnPosition, cardDetails, deckProfile, current, replay.finalState),
+        buildExtendComboPrompt(deckList, cardNames, handCards, turnPosition, cardDetails, deckProfile, current, replay.finalState, sketch?.targetEndBoardIds),
         'extend', deckList, cardNames, handCards, turnPosition, cardDetails,
-        { deckProfile, route: current, finalState: replay.finalState }
+        { deckProfile, route: current, finalState: replay.finalState, lineFocus: sketch }
       );
       parsed = parseJsonPayload(raw, `extension of "${current.name}"`);
     } catch (e) {
