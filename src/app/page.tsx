@@ -301,12 +301,17 @@ export default function Home() {
     setHoveredCardId(null);
   };
 
-  // Safety nets for stuck tooltips: mouseleave never fires when the hovered card is
+  // Safety net for stuck tooltips: mouseleave never fires when the hovered card is
   // unmounted under the cursor (clicking a card in a list, closing a modal, list
-  // re-render), so also clear on any click and whenever the view or a modal changes.
-  useEffect(() => {
+  // re-render), so also clear whenever the view or a modal changes. Adjusting state
+  // during render (React's "storing info from previous renders" pattern) instead of
+  // in an effect avoids an extra commit just to clear this value.
+  const tooltipResetKey = `${view}|${isHandSelectorOpen}|${isComboSolverOpen}|${isSettingsOpen}`;
+  const [prevTooltipResetKey, setPrevTooltipResetKey] = useState(tooltipResetKey);
+  if (prevTooltipResetKey !== tooltipResetKey) {
+    setPrevTooltipResetKey(tooltipResetKey);
     setHoveredCardId(null);
-  }, [view, isHandSelectorOpen, isComboSolverOpen, isSettingsOpen]);
+  }
 
   // Find routes matching current deck (static + generated custom routes)
   const getMatchingCombos = () => {
