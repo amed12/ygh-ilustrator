@@ -10,6 +10,7 @@ import { SettingsModal } from '../components/SettingsModal';
 import { ComboGenerator } from '../components/ComboGenerator';
 import { HandSelector } from '../components/HandSelector';
 import { ComboCreator } from '../components/ComboCreator';
+import { ComboSheet } from '../components/ComboSheet';
 import { CardTooltip } from '../components/CardTooltip';
 import { DeckList, ComboRoute, AISettings, ComboStep, ComboHandContext, YGOPROCardDetails, DeckProfile } from '../types';
 import { TurnPosition } from '../services/prompts';
@@ -42,8 +43,8 @@ interface PersistedSession {
 }
 
 export default function Home() {
-  // App views: 'import' | 'deck' | 'combo' | 'create-combo'
-  const [view, setView] = useState<'import' | 'deck' | 'combo' | 'create-combo'>('import');
+  // App views: 'import' | 'deck' | 'combo' | 'create-combo' | 'sheet'
+  const [view, setView] = useState<'import' | 'deck' | 'combo' | 'create-combo' | 'sheet'>('import');
   const [deckList, setDeckList] = useState<DeckList | null>(null);
   
   // Custom API Settings
@@ -283,7 +284,7 @@ export default function Home() {
       setSelectedRoute(payload.route);
       setCurrentStepId(payload.route.steps.length > 0 ? payload.route.steps[0].id : null);
       setComboHistory([]);
-      setView('combo');
+      setView('sheet');
     })();
   }, []);
 
@@ -336,6 +337,13 @@ export default function Home() {
     if (selectedRoute?.id === route.id) {
       setSelectedRoute(null);
     }
+  };
+
+  // Open the read-only Combo Sheet for a route — derived purely from selectedRoute/handContexts,
+  // no new persistence needed.
+  const handleOpenSheet = (route: ComboRoute) => {
+    setSelectedRoute(route);
+    setView('sheet');
   };
 
   // Start practicing a route
@@ -712,6 +720,7 @@ export default function Home() {
                 onEditRoute={handleEditRoute}
                 onDeleteRoute={handleDeleteRoute}
                 onShareRoute={handleShareCombo}
+                onSheetRoute={handleOpenSheet}
                 sharedRouteId={justCopiedRouteId}
                 onImportCombo={handleImportCombo}
                 onExportPlaybook={handleExportPlaybook}
@@ -753,10 +762,25 @@ export default function Home() {
             }
             onShare={() => handleShareCombo(selectedRoute)}
             onEdit={() => handleEditRoute(selectedRoute)}
+            onOpenSheet={() => handleOpenSheet(selectedRoute)}
             justCopied={justCopiedRouteId === selectedRoute.id}
             cardDetails={cardDetails}
             deckProfile={deckProfile}
             assumedMissingCards={getAssumedMissingCards()}
+            onCardMouseEnter={handleCardMouseEnter}
+            onCardMouseLeave={handleCardMouseLeave}
+            onCardMouseMove={handleCardMouseMove}
+          />
+        )}
+
+        {view === 'sheet' && selectedRoute && (
+          <ComboSheet
+            route={selectedRoute}
+            handContext={handContexts[selectedRoute.id]}
+            cardDetails={cardDetails}
+            deckList={deckList ?? undefined}
+            onBack={() => setView(deckList ? 'deck' : 'import')}
+            onPractice={handleStartCombo}
             onCardMouseEnter={handleCardMouseEnter}
             onCardMouseLeave={handleCardMouseLeave}
             onCardMouseMove={handleCardMouseMove}

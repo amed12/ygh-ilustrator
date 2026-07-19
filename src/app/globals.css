@@ -53,3 +53,19 @@ body {
 .animate-fade-in {
   animation: fadeIn 0.3s ease-out forwards;
 }
+
+/* Combo Sheet print styles */
+@media print {
+  body {
+    background: white;
+    color: black;
+  }
+
+  .print\:hidden {
+    display: none !important;
+  }
+
+  .break-inside-avoid {
+    break-inside: avoid;
+  }
+}

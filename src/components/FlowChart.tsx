@@ -4,6 +4,8 @@ import React from 'react';
 import { ComboRoute, ComboStep, YGOPROCardDetails } from '../types';
 import { CARD_REGISTRY } from '../data/cards';
 import { ArrowDown, ArrowRight, GitBranch } from '@phosphor-icons/react';
+import { mainSuccessLine } from '../utils/routeGraph';
+import { formatTriggerLabel } from '../utils/triggerUi';
 
 interface FlowChartProps {
   route: ComboRoute;
@@ -30,32 +32,14 @@ export function FlowChart({ route, currentStepId, history, cardDetails = {} }: F
   });
 
   // Dynamically trace the main success line from the first step in the route
-  const mainLineSteps: ComboStep[] = [];
+  const mainLineSteps: ComboStep[] = mainSuccessLine(route);
+  const mainSet = new Set(mainLineSteps.map(s => s.id));
   const fallbackSteps = new Map<number, ComboStep>();
-
-  if (route.steps.length > 0) {
-    const stepMap = new Map(route.steps.map(s => [s.id, s]));
-    const mainSet = new Set<number>();
-    let current: ComboStep | undefined = route.steps[0];
-
-    while (current) {
-      mainLineSteps.push(current);
-      mainSet.add(current.id);
-      
-      const successRes = current.responses?.find(r => r.trigger === 'success');
-      if (successRes && successRes.next_step !== null && stepMap.has(successRes.next_step) && !mainSet.has(successRes.next_step)) {
-        current = stepMap.get(successRes.next_step);
-      } else {
-        break;
-      }
+  route.steps.forEach(s => {
+    if (!mainSet.has(s.id)) {
+      fallbackSteps.set(s.id, s);
     }
-
-    route.steps.forEach(s => {
-      if (!mainSet.has(s.id)) {
-        fallbackSteps.set(s.id, s);
-      }
-    });
-  }
+  });
 
   const getStepStatusClass = (stepId: number) => {
     if (stepId === currentStepId) {
@@ -65,10 +49,6 @@ export function FlowChart({ route, currentStepId, history, cardDetails = {} }: F
       return 'border-zinc-800 bg-zinc-900/40 text-zinc-500';
     }
     return 'border-zinc-900 bg-zinc-950 text-zinc-400';
-  };
-
-  const formatTriggerLabel = (trigger: string) => {
-    return trigger.replace(/_/g, ' ').toUpperCase();
   };
 
   return (

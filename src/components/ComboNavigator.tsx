@@ -8,7 +8,10 @@ import { CARD_REGISTRY } from '../data/cards';
 import { StepTimeline } from './StepTimeline';
 import { FlowChart } from './FlowChart';
 import { OpeningHandPanel } from './OpeningHandPanel';
-import { ArrowLeft, ArrowCounterClockwise, DownloadSimple, ShareNetwork, Check, Trophy, SmileySad, XCircle, WarningCircle, PencilSimple } from '@phosphor-icons/react';
+import { ArrowLeft, ArrowCounterClockwise, DownloadSimple, ShareNetwork, Check, Trophy, SmileySad, XCircle, WarningCircle, PencilSimple, ArrowRight, FileText } from '@phosphor-icons/react';
+import { deriveStepCardFlow } from '../utils/stepCards';
+import { resolveActionType, ACTION_TYPE_META } from '../data/actionTypes';
+import { formatTriggerLabel, getTriggerColor } from '../utils/triggerUi';
 
 interface ComboNavigatorProps {
   route: ComboRoute;
@@ -19,6 +22,7 @@ interface ComboNavigatorProps {
   onAdvance: (trigger: string) => void;
   onReset: () => void;
   onEdit?: () => void;
+  onOpenSheet?: () => void;
   onBackToDeck: () => void;
   handContext?: ComboHandContext;
   onExport?: () => void;
@@ -43,6 +47,7 @@ export function ComboNavigator({
   onAdvance,
   onReset,
   onEdit,
+  onOpenSheet,
   onBackToDeck,
   handContext,
   onExport,
@@ -62,21 +67,9 @@ export function ComboNavigator({
     return cardDetails[cardId]?.name || CARD_REGISTRY[cardId]?.name || `Card #${cardId}`;
   };
 
-  const formatTriggerLabel = (trigger: string) => {
-    return trigger.replace(/_/g, ' ').toUpperCase();
-  };
-
   const getTriggerIcon = (trigger: string) => {
     if (trigger === 'success') return <Check size={18} weight="bold" className="group-hover:scale-110 transition-transform" />;
     return <XCircle size={18} weight="bold" className="group-hover:scale-110 transition-transform" />;
-  };
-
-  const getTriggerColor = (trigger: string) => {
-    if (trigger === 'success') return 'border-emerald-950 bg-emerald-950/10 hover:bg-emerald-950/30 text-emerald-400';
-    if (trigger === 'maxx_c') return 'border-orange-950 bg-orange-950/10 hover:bg-orange-950/30 text-orange-400';
-    if (trigger === 'ash_blossom') return 'border-pink-950 bg-pink-950/10 hover:bg-pink-950/30 text-pink-400';
-    if (trigger === 'nibiru') return 'border-yellow-950 bg-yellow-950/10 hover:bg-yellow-950/30 text-yellow-400';
-    return 'border-red-950 bg-red-950/10 hover:bg-red-950/30 text-red-400';
   };
 
   return (
@@ -110,6 +103,17 @@ export function ComboNavigator({
         </div>
 
         <div className="flex items-center gap-2">
+          {onOpenSheet && (
+            <button
+              onClick={onOpenSheet}
+              className="flex items-center gap-1.5 rounded-lg border border-zinc-800 hover:border-zinc-700 bg-zinc-900/40 hover:bg-zinc-900 px-3.5 py-2 text-xs font-semibold text-zinc-300 transition-all active:scale-[0.98]"
+              title="Open scannable Combo Sheet"
+            >
+              <FileText size={14} />
+              <span>Sheet</span>
+            </button>
+          )}
+
           {onShare && (
             <button
               onClick={onShare}
@@ -183,24 +187,49 @@ export function ComboNavigator({
                 </span>
               </div>
 
-              {/* Central Card Display with Glow */}
-              <div className="flex justify-center py-2">
-                <CardDisplay
-                  cardId={currentStep.cardId}
-                  size="lg"
-                  glow={true}
-                  details={cardDetails[currentStep.cardId]}
-                  roles={deckProfile?.cards[currentStep.cardId]?.roles}
-                  onMouseEnter={onCardMouseEnter}
-                  onMouseLeave={onCardMouseLeave}
-                  onMouseMove={onCardMouseMove}
-                />
-              </div>
+              {/* Central Card Display with Glow (+ source → result cards row when derivable) */}
+              {(() => {
+                const stepActionType = resolveActionType(currentStep);
+                const { resultCardIds } = deriveStepCardFlow(currentStep);
+                return (
+                  <div className="flex justify-center items-center gap-3 py-2">
+                    <CardDisplay
+                      cardId={currentStep.cardId}
+                      size="lg"
+                      glow={true}
+                      details={cardDetails[currentStep.cardId]}
+                      roles={deckProfile?.cards[currentStep.cardId]?.roles}
+                      actionBadge={stepActionType}
+                      onMouseEnter={onCardMouseEnter}
+                      onMouseLeave={onCardMouseLeave}
+                      onMouseMove={onCardMouseMove}
+                    />
+                    {resultCardIds.length > 0 && (
+                      <>
+                        <ArrowRight size={20} className="text-zinc-600 shrink-0" />
+                        <div className="flex flex-wrap gap-2 max-w-[140px]">
+                          {resultCardIds.map(id => (
+                            <CardDisplay
+                              key={id}
+                              cardId={id}
+                              size="sm"
+                              details={cardDetails[id]}
+                              onMouseEnter={onCardMouseEnter}
+                              onMouseLeave={onCardMouseLeave}
+                              onMouseMove={onCardMouseMove}
+                            />
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Step Action Text */}
               <div className="space-y-1 max-w-sm">
-                <span className="inline-block text-[10px] font-mono uppercase tracking-wider bg-zinc-900 border border-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full">
-                  Action Required
+                <span className="inline-flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider bg-zinc-900 border border-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full">
+                  {resolveActionType(currentStep) ? ACTION_TYPE_META[resolveActionType(currentStep)!].label : 'Action Required'}
                 </span>
                 <p className="text-base font-bold text-zinc-200 leading-normal">
                   {currentStep.action}

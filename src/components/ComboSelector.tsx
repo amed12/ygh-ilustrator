@@ -4,7 +4,7 @@ import React, { useRef } from 'react';
 import { ComboRoute, DeckList, DeckProfile, YGOPROCardDetails } from '../types';
 import { CARD_REGISTRY } from '../data/cards';
 import { probabilityToOpenCombo, probabilityToBrick } from '../engine/probability';
-import { Play, Tag, Lightbulb, UploadSimple, DownloadSimple, ShareNetwork, Plus, ChartBar, Brain, Hand, PencilSimple, Trash } from '@phosphor-icons/react';
+import { Play, Tag, Lightbulb, UploadSimple, DownloadSimple, ShareNetwork, Plus, ChartBar, Brain, Hand, PencilSimple, Trash, FileText } from '@phosphor-icons/react';
 import { DeckRoleBreakdown } from './DeckRoleBreakdown';
 
 const EFFICIENCY_STYLES: Record<string, string> = {
@@ -22,6 +22,7 @@ interface ComboSelectorProps {
   onEditRoute?: (route: ComboRoute) => void;
   onDeleteRoute?: (route: ComboRoute) => void;
   onShareRoute?: (route: ComboRoute) => void;
+  onSheetRoute?: (route: ComboRoute) => void;
   sharedRouteId?: string | null;
   onImportCombo?: (files: File[]) => void;
   onExportPlaybook?: () => void;
@@ -48,6 +49,7 @@ export function ComboSelector({
   onEditRoute,
   onDeleteRoute,
   onShareRoute,
+  onSheetRoute,
   sharedRouteId,
   onImportCombo,
   onExportPlaybook,
@@ -117,6 +119,19 @@ export function ComboSelector({
                     {route.name}
                   </h4>
                   <div className="flex items-center gap-1.5 shrink-0">
+                    {onSheetRoute && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSheetRoute(route);
+                        }}
+                        className="rounded p-1 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900 border border-transparent hover:border-zinc-800 transition-all"
+                        title="Open scannable Combo Sheet"
+                      >
+                        <FileText size={12} />
+                      </button>
+                    )}
                     {onShareRoute && (
                       <button
                         type="button"
