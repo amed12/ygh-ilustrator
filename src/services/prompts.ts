@@ -2,11 +2,19 @@ import { ComboRoute, DeckList, DeckProfile, YGOPROCardDetails } from '../types';
 
 export type TurnPosition = 'going-first' | 'going-second';
 
-/** A cheap first-pass "sketch" of one viable combo line — expanded into a full route by a dedicated call. */
+/**
+ * A cheap first-pass "sketch" of one viable combo line — expanded into a full route by a
+ * dedicated call. Mirrors how deck-guide authors think: pick the TARGET end board first,
+ * then the KEY enabler cards, then the search path from the hand.
+ */
 export interface ComboLineSketch {
   name: string;
   starterCardIds: string[];
   goal: string;
+  /** Concrete end-board target: card IDs (Extra Deck / boss / payoff) this line builds toward. */
+  targetEndBoardIds?: string[];
+  /** Enabler cards the line routes through (may live in the Deck, unlike starterCardIds). */
+  keyCardIds?: string[];
 }
 
 /** Snapshot of the replayed board state after a route's main line — fed to the extend prompt. */
@@ -302,16 +310,29 @@ export function buildComboPrompt(
     buildPromptSections(deckList, handCards, turnPosition, cardDetails, deckProfile);
   const roleMapSection = buildDeckRoleMapSection(deckList, cardDetails, deckProfile);
 
-  const lineFocusSection = lineFocus
-    ? `
+  let lineFocusSection = '';
+  if (lineFocus) {
+    const targets = lineFocus.targetEndBoardIds ?? [];
+    const keys = lineFocus.keyCardIds ?? [];
+    const targetSection = targets.length > 0
+      ? `TARGET END BOARD (work BACKWARDS from these):
+${formatStateList(targets, cardDetails)}
+For each target card above, determine what it requires (Xyz/Synchro/Link materials, summoning condition, activation cost), then sequence the steps from the opening hand that satisfy those requirements. If a target proves illegal from this hand, replace it with the next-strongest honest alternative and say so in the description — do NOT settle for a board shallower than the target without stating why.
+`
+      : '';
+    const keySection = keys.length > 0
+      ? `Key enabler card(s) to route through (may be searched/summoned from the Deck): ${keys.join(', ')}.
+`
+      : '';
+    lineFocusSection = `
 ═══════════════════════════════════════
 ROUTE ASSIGNMENT (this call builds ONE specific line):
 ═══════════════════════════════════════
 Build the line "${lineFocus.name}" — starter card ID(s): ${lineFocus.starterCardIds.join(', ')}.
 Goal: ${lineFocus.goal}
-Your ENTIRE output budget belongs to this one route — spend it on main-line depth first, then fallback branches. Do not describe alternative routes.
-`
-    : '';
+${targetSection}${keySection}Your ENTIRE output budget belongs to this one route — spend it on main-line depth first, then fallback branches. Do not describe alternative routes.
+`;
+  }
 
   return `You are an elite-level competitive Yu-Gi-Oh! TCG / Master Duel deck analyst and professional combo architect.
 Your job is to generate a complete, deeply-analyzed combo route with a fully-crafted end board.
@@ -645,9 +666,14 @@ export function buildComboSketchPrompt(
   const roleMapSection = buildDeckRoleMapSection(deckList, cardDetails, deckProfile);
 
   return `You are an elite-level competitive Yu-Gi-Oh! TCG / Master Duel deck analyst.
-Identify EVERY distinct, viable combo line this opening hand supports. Do NOT write out the steps —
-only name each line, its essential starter card(s) from the hand, and the end board it should build toward.
-Different lines use different starters or fundamentally different Extra Deck payoffs — no near-duplicates.
+Plan this opening hand the way a professional deck-guide author does — BACKWARDS from the end board:
+1. END BOARD MENU first: from the Extra Deck below (plus "boss"-role cards in the DECK ROLE MAP), list the end boards this DECK can honestly build, strongest first — the boss monsters and the exact disruptions they provide.
+2. TARGET per line: pick the strongest menu entry this specific hand can reach (card IDs).
+3. KEY CARDS: the enabler card(s) that make that target line live — these may sit in the Deck, not just the hand.
+4. SEARCH PATH: trace hand starter → searcher chain → key card → target (use the "searches" graph in the DECK ROLE MAP). A line only counts as viable if this trace exists; if the top target is unreachable from this hand, DOWNGRADE the target one tier instead of dropping the line.
+
+Do NOT write out combo steps — only name each line, its starter card(s) from the hand, its key cards, its target end board, and the goal.
+Different lines use different starters or fundamentally different targets — no near-duplicates.
 
 ════════════════════════════════════════
 TURN POSITION & STRATEGIC OBJECTIVE:
@@ -672,16 +698,17 @@ ${roleMapSection}
 ═══════════════════════════════════
 RULES:
 ═══════════════════════════════════
-1. At least 1 line, at most 4. Order from strongest to weakest expected end board.
+1. At least 1 line, at most 4. Order from strongest to weakest target end board.
 2. "starterCardIds" must be card IDs from the OPENING HAND only.
-3. "goal" states the concrete end board to build toward (name the Extra Deck monsters / disruptions), remembering that cards searched or summoned FROM THE DECK are reachable extensions of the hand — aim for the deepest honest board, not the first available Xyz/Synchro.
-4. If the hand is a genuine brick, return one line with goal "set and pass" and name it accordingly.
+3. "targetEndBoardIds" are the card IDs the line ends on (Extra Deck monsters, boss monsters, payoff Spell/Trap). "keyCardIds" are the enabler cards the line routes through — Deck cards are allowed, since cards searched or summoned FROM THE DECK are reachable extensions of the hand. Aim each target at the deepest honest board, not the first available Xyz/Synchro.
+4. "goal" states in words what the target board does (name the disruptions).
+5. If the hand is a genuine brick, return one line with goal "set and pass", empty targetEndBoardIds, and name it accordingly.
 
 OUTPUT FORMAT:
 Respond with ONLY a valid raw JSON object. No markdown, no backticks, no explanation.
 {
   "lines": [
-    { "name": "string (max 50 chars)", "starterCardIds": ["<hand card ID>"], "goal": "string (1-2 sentences: target end board and key disruptions)" }
+    { "name": "string (max 50 chars)", "starterCardIds": ["<hand card ID>"], "keyCardIds": ["<deck or hand card ID>"], "targetEndBoardIds": ["<card ID the line ends on>"], "goal": "string (1-2 sentences: what the target board does and its key disruptions)" }
   ]
 }`;
 }
@@ -706,11 +733,22 @@ export function buildExtendComboPrompt(
   cardDetails: Record<string, YGOPROCardDetails>,
   deckProfile: DeckProfile | undefined,
   route: ComboRoute,
-  finalState: ReplayFinalState
+  finalState: ReplayFinalState,
+  targetEndBoardIds?: string[]
 ): string {
   const { handSection, extraSection, mainSection, mainDeckOthers } =
     buildPromptSections(deckList, handCards, turnPosition, cardDetails, deckProfile);
   const roleMapSection = buildDeckRoleMapSection(deckList, cardDetails, deckProfile);
+
+  const fieldSet = new Set(finalState.field);
+  const missedTargets = (targetEndBoardIds ?? []).filter(id => !fieldSet.has(id));
+  const targetGapSection = missedTargets.length > 0
+    ? `
+UNREACHED TARGETS — this line was sketched to end on the following card(s), which are NOT on the final field:
+${formatStateList(missedTargets, cardDetails)}
+For each one, either find a legal sequence of steps that puts it on the board, or conclude (per the rules above) that no such sequence exists from this state.
+`
+    : '';
 
   return `You are an elite-level competitive Yu-Gi-Oh! TCG / Master Duel combo architect reviewing YOUR OWN combo line for missed extensions.
 
@@ -750,7 +788,7 @@ ${RULES_ENFORCEMENT}
 ═══════════════════════════════════
 TASK:
 ═══════════════════════════════════
-Scan the board state above for ANY legal play that strengthens the end board: an unused search or Special Summon effect (hand, field, GY, or Deck), an Xyz/Synchro/Link play with materials on field, an archetype Spell/Trap that adds bodies or disruption. Respect every rule above — do not reuse a spent OPT, do not use a second Normal Summon if one was used.
+${targetGapSection}Scan the board state above for ANY legal play that strengthens the end board: an unused search or Special Summon effect (hand, field, GY, or Deck), an Xyz/Synchro/Link play with materials on field, an archetype Spell/Trap that adds bodies or disruption. Respect every rule above — do not reuse a spent OPT, do not use a second Normal Summon if one was used.
 
 - If at least one such play exists: respond with the COMPLETE UPDATED ROUTE JSON — the original steps unchanged, new steps appended to the main success line (continue step ID numbering; the previously-final step's "success" response now points to your first new step), endBoard and description updated to match the new final board. Track stateMutations accurately for every new step.
 - If NO legal extension exists: respond with exactly {"done": true, "reason": "string (which rule blocks every remaining play)"}.
