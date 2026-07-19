@@ -3,8 +3,9 @@
 import React, { useState } from 'react';
 import Image from 'next/image';
 import { CARD_REGISTRY } from '../data/cards';
-import { CardRole, YGOPROCardDetails } from '../types';
+import { CardRole, YGOPROCardDetails, ActionType } from '../types';
 import { CardRoleBadge } from './CardRoleBadge';
+import { ActionTypeBadge } from './ActionTypeBadge';
 
 interface CardDisplayProps {
   cardId: string;
@@ -16,6 +17,8 @@ interface CardDisplayProps {
   details?: YGOPROCardDetails;
   /** AI-compiled deck-analysis role(s) for this card; when present, shown as chips on the card. */
   roles?: CardRole[];
+  /** When present, shows a small action-type icon badge overlay (bottom-left). */
+  actionBadge?: ActionType;
   onMouseEnter?: (cardId: string, e: React.MouseEvent) => void;
   onMouseLeave?: () => void;
   onMouseMove?: (e: React.MouseEvent) => void;
@@ -27,6 +30,7 @@ export function CardDisplay({
   glow = false,
   details,
   roles,
+  actionBadge,
   onMouseEnter,
   onMouseLeave,
   onMouseMove
@@ -116,6 +120,13 @@ export function CardDisplay({
           {roles!.map(role => (
             <CardRoleBadge key={role} role={role} size="xs" />
           ))}
+        </div>
+      )}
+
+      {/* Action-type badge (bottom-left, non-interactive so it doesn't block hover) */}
+      {actionBadge && (
+        <div className="absolute bottom-1 left-1 z-10 pointer-events-none">
+          <ActionTypeBadge actionType={actionBadge} size={size === 'lg' || size === 'md' ? 'sm' : 'xs'} />
         </div>
       )}
 
