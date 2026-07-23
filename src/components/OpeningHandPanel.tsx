@@ -38,7 +38,7 @@ export function OpeningHandPanel({
             <Hand size={14} weight="duotone" />
           </div>
           <span className="font-sans text-xs font-bold text-zinc-300 uppercase tracking-wider">
-            Opening Hand
+            {handContext.scenarioId ? 'AI-Hypothesized Hand (Scenario)' : 'Opening Hand'}
           </span>
         </div>
 

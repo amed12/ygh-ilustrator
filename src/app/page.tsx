@@ -12,18 +12,19 @@ import { HandSelector } from '../components/HandSelector';
 import { ComboCreator } from '../components/ComboCreator';
 import { ComboSheet } from '../components/ComboSheet';
 import { CardTooltip } from '../components/CardTooltip';
-import { DeckList, ComboRoute, AISettings, ComboStep, ComboHandContext, YGOPROCardDetails, DeckProfile } from '../types';
+import { DeckList, ComboRoute, AISettings, ComboStep, ComboHandContext, YGOPROCardDetails, DeckProfile, EndboardScenarioDef, EndboardScenarioId, ScenarioCatalog } from '../types';
 import { TurnPosition } from '../services/prompts';
 import { ALL_COMBO_ROUTES } from '../data/combos';
 import { CARD_REGISTRY } from '../data/cards';
 import { findMatchingRoutes, findPlayableRoutes } from '../engine/comboEngine';
 import { rankRoutes } from '../engine/adaptiveMatcher';
-import { generateMultipleAICombos } from '../services/aiClient';
+import { generateMultipleAICombos, generateEndboardScenario } from '../services/aiClient';
 import { exportComboToFile, exportPlaybookToFile, importComboFromFile } from '../services/comboIO';
 import { buildShareUrl, readShareParamFromLocation, decodeShareableCombo, clearShareParamFromLocation } from '../services/shareLink';
 import { ComboSolver } from '../components/ComboSolver';
 import { getCachedCards, putCachedCards } from '../services/cardCache';
 import { getCachedDeckProfile, putCachedDeckProfile, hashDeck } from '../services/deckProfileCache';
+import { getCachedScenarioCatalog, putCachedScenarioResult, hashDeckProfileContent } from '../services/scenarioCache';
 import { generateDeckProfile } from '../services/aiClient';
 
 const DEFAULT_SETTINGS: AISettings = {
@@ -85,6 +86,10 @@ export default function Home() {
   const [deckProfile, setDeckProfile] = useState<DeckProfile | null>(null);
   const [isProfileGenerating, setIsProfileGenerating] = useState(false);
 
+  // On-demand "Endboard Potential" scenarios (AI picks its own ceiling/floor hand per scenario)
+  const [scenarioCatalog, setScenarioCatalog] = useState<ScenarioCatalog | null>(null);
+  const [generatingScenarioId, setGeneratingScenarioId] = useState<EndboardScenarioId | null>(null);
+
   // Route currently being edited in the ComboCreator (null = creating a new one).
   const [editingRoute, setEditingRoute] = useState<ComboRoute | null>(null);
 
@@ -118,7 +123,11 @@ export default function Home() {
           const session: PersistedSession = JSON.parse(stored);
           if (session.deckList) {
             setDeckList(session.deckList);
-            setDeckProfile(getCachedDeckProfile(hashDeck(session.deckList)));
+            const restoredProfile = getCachedDeckProfile(hashDeck(session.deckList));
+            setDeckProfile(restoredProfile);
+            if (restoredProfile) {
+              setScenarioCatalog(getCachedScenarioCatalog(restoredProfile.deckHash, hashDeckProfileContent(restoredProfile)));
+            }
             setView('deck');
           }
           if (session.customRoutes?.length) setCustomRoutes(session.customRoutes);
@@ -173,7 +182,11 @@ export default function Home() {
     setDeckList(deck);
     setSelectedRoute(null);
     loadCardDetailsForDeck(deck);
-    setDeckProfile(getCachedDeckProfile(hashDeck(deck)));
+    const restoredProfile = getCachedDeckProfile(hashDeck(deck));
+    setDeckProfile(restoredProfile);
+    setScenarioCatalog(
+      restoredProfile ? getCachedScenarioCatalog(restoredProfile.deckHash, hashDeckProfileContent(restoredProfile)) : null
+    );
     setView('deck');
   };
 
@@ -187,12 +200,53 @@ export default function Home() {
       const profile = await generateDeckProfile(deckList, settings, cardDetails, deckHash);
       putCachedDeckProfile(profile);
       setDeckProfile(profile);
+      // A fresh profile analysis may change roles/search graph — reload (or invalidate) the
+      // scenario catalog rather than showing stale scenario results against the new profile.
+      setScenarioCatalog(getCachedScenarioCatalog(profile.deckHash, hashDeckProfileContent(profile)));
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : 'Something unexpected went wrong.';
       alert(`Couldn't analyze deck roles: ${message}`);
     } finally {
       setIsProfileGenerating(false);
     }
+  };
+
+  // On-demand generation of one Endboard Potential scenario: AI picks its own hypothetical
+  // ceiling/floor hand and expands the top line through the deep-line pipeline. Structurally
+  // identical to handleAnalyzeDeckRoles's loading/error pattern.
+  const handleGenerateScenario = async (scenario: EndboardScenarioDef) => {
+    if (!deckList || !deckProfile) return;
+    setGeneratingScenarioId(scenario.id);
+    try {
+      const names = await getCardNamesForDeck(deckList);
+      const result = await generateEndboardScenario(settings, deckList, names, cardDetails, deckProfile, scenario);
+      const deckProfileVersion = hashDeckProfileContent(deckProfile);
+      putCachedScenarioResult(deckProfile.deckHash, deckProfileVersion, result);
+      setScenarioCatalog(getCachedScenarioCatalog(deckProfile.deckHash, deckProfileVersion));
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : 'Something unexpected went wrong.';
+      alert(`Couldn't generate scenario "${scenario.label}": ${message}`);
+    } finally {
+      setGeneratingScenarioId(null);
+    }
+  };
+
+  // Opens the read-only Combo Sheet for a cached scenario result, reusing the same sheet path
+  // as a normal generated route — builds a ComboHandContext with scenarioId set so ComboSheet/
+  // OpeningHandPanel can label it as an AI-hypothesized hand instead of a real drawn hand.
+  const handleOpenScenarioSheet = (scenarioId: EndboardScenarioId) => {
+    const result = scenarioCatalog?.results[scenarioId];
+    if (!result) return;
+    setHandContexts(prev => ({
+      ...prev,
+      [result.route.id]: {
+        handCardIds: result.hypotheticalHand,
+        turnPosition: result.route.tags.includes('going-second') ? 'going-second' : 'going-first',
+        generatedAt: result.generatedAt,
+        scenarioId: result.scenarioId
+      }
+    }));
+    handleOpenSheet(result.route);
   };
 
   // Helper to fetch details for all cards in a deck in chunks
@@ -740,6 +794,12 @@ export default function Home() {
                 onAnalyzeDeckRoles={
                   (settings.useDemo || settings.customApiKey.trim() !== '') ? handleAnalyzeDeckRoles : undefined
                 }
+                scenarioCatalog={scenarioCatalog}
+                generatingScenarioId={generatingScenarioId}
+                onGenerateScenario={
+                  (settings.useDemo || settings.customApiKey.trim() !== '') ? handleGenerateScenario : undefined
+                }
+                onOpenScenarioSheet={handleOpenScenarioSheet}
                 onCardMouseEnter={handleCardMouseEnter}
                 onCardMouseLeave={handleCardMouseLeave}
                 onCardMouseMove={handleCardMouseMove}

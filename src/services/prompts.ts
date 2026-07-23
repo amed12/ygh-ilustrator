@@ -717,6 +717,91 @@ Respond with ONLY a valid raw JSON object. No markdown, no backticks, no explana
 }`;
 }
 
+/**
+ * Builds the scenario-sketch prompt: unlike buildComboSketchPrompt (which is handed a fixed
+ * hand), this asks the model to ALSO choose its own N-card opening hand from the deck's real
+ * composition — either the strongest or weakest honest hand it can produce — before sketching
+ * lines from it. No fixed hand exists yet, so full effect text is sent for the entire main deck
+ * (like buildDeckProfilePrompt), not split into hand/rest sections.
+ */
+export function buildScenarioSketchPrompt(
+  deckList: DeckList,
+  cardNames: Record<string, string>,
+  turnPosition: TurnPosition,
+  handSize: number,
+  handQuality: 'best' | 'worst',
+  cardDetails: Record<string, YGOPROCardDetails> = {},
+  deckProfile?: DeckProfile
+): string {
+  const uniqueSection = (ids: string[]) => ids
+    .filter((id, i) => ids.indexOf(id) === i)
+    .map(id => formatCardBlock(id, cardDetails[id], true))
+    .join('\n');
+
+  const mainSection = uniqueSection(deckList.main);
+  const extraSection = deckList.extra.length > 0 ? uniqueSection(deckList.extra) : '  (No extra deck cards)';
+  const roleMapSection = buildDeckRoleMapSection(deckList, cardDetails, deckProfile);
+
+  const turnContext = turnPosition === 'going-first'
+    ? `GOING FIRST — No Battle Phase this turn. Objective: build the strongest end board this hand can honestly generate.`
+    : `GOING SECOND — Opponent has an established board. Objective: break the opponent's board and establish advantage (assume a generic strong opposing board when reasoning about "breaking" it).`;
+
+  const handMandate = handQuality === 'best'
+    ? `HAND SELECTION MANDATE — CEILING HAND:
+Choose your own ${handSize}-card opening hand from the Main Deck below (respecting each card's REAL copy count as printed in the deck list — never assume more copies of an ID than the deck actually runs) that gives this deck its single strongest realistic opening. Pick the hand a skilled player would be thrilled to open with.`
+    : `HAND SELECTION MANDATE — FLOOR HAND:
+Choose the weakest realistic ${handSize}-card opening this deck's actual composition could produce (respecting each card's REAL copy count as printed in the deck list — never assume more copies of an ID than the deck actually runs). Bias toward one weak/redundant starter or brick-tagged cards (see DECK ROLE MAP "brick"/"garnet" roles if available) — but do NOT pick an impossible combination, and do not pick a hand that has literally zero legal plays unless the deck's worst-case truly has none.`;
+
+  return `You are an elite-level competitive Yu-Gi-Oh! TCG / Master Duel deck analyst.
+This deck has NO fixed opening hand yet — you must first CHOOSE the hand, then plan combo lines from it, the way a professional deck-guide author reasons BACKWARDS from the end board:
+1. END BOARD MENU first: from the Extra Deck below (plus "boss"-role cards in the DECK ROLE MAP), list the end boards this DECK can honestly build, strongest first — the boss monsters and the exact disruptions they provide.
+2. TARGET per line: pick the strongest (or weakest, per the mandate below) menu entry the chosen hand can reach (card IDs).
+3. KEY CARDS: the enabler card(s) that make that target line live — these may sit in the Deck, not just the hand.
+4. SEARCH PATH: trace hand starter → searcher chain → key card → target (use the "searches" graph in the DECK ROLE MAP). A line only counts as viable if this trace exists; if the top target is unreachable from the chosen hand, DOWNGRADE the target one tier instead of dropping the line.
+
+Do NOT write out combo steps — only name each line, its starter card(s) from the chosen hand, its key cards, its target end board, and the goal.
+
+════════════════════════════════════════
+${handMandate}
+════════════════════════════════════════
+
+════════════════════════════════════════
+TURN POSITION & STRATEGIC OBJECTIVE:
+════════════════════════════════════════
+${turnContext}
+
+════════════════════════════
+MAIN DECK (${deckList.main.length} cards, full composition) — FULL CARD EFFECTS:
+════════════════════════════
+${mainSection}
+
+════════════════════════════
+EXTRA DECK (${deckList.extra.length} cards) — FULL CARD EFFECTS:
+════════════════════════════
+${extraSection}
+${roleMapSection}
+═══════════════════════════════════
+RULES:
+═══════════════════════════════════
+1. "handCardIds" must contain EXACTLY ${handSize} card IDs, each drawn only from the Main Deck list above, and never exceeding that card's real copy count in the deck.
+2. At least 1 line, at most 4, sketched from the chosen hand. Order from strongest to weakest target end board.
+3. "starterCardIds" in each line must be card IDs from your chosen hand only.
+4. "targetEndBoardIds" are the card IDs the line ends on (Extra Deck monsters, boss monsters, payoff Spell/Trap). "keyCardIds" are the enabler cards the line routes through — Deck cards are allowed.
+5. "goal" states in words what the target board does (name the disruptions).
+6. "handRationale" (1-2 sentences) explains WHY this hand is the deck's ceiling (or floor) — which cards make it strong or weak.
+7. If forced into a genuine brick hand (floor scenario), return one line with goal "set and pass", empty targetEndBoardIds, and name it accordingly.
+
+OUTPUT FORMAT:
+Respond with ONLY a valid raw JSON object. No markdown, no backticks, no explanation.
+{
+  "handCardIds": ["<card ID>", "... exactly ${handSize} total"],
+  "handRationale": "string (1-2 sentences)",
+  "lines": [
+    { "name": "string (max 50 chars)", "starterCardIds": ["<hand card ID>"], "keyCardIds": ["<deck or hand card ID>"], "targetEndBoardIds": ["<card ID the line ends on>"], "goal": "string (1-2 sentences: what the target board does and its key disruptions)" }
+  ]
+}`;
+}
+
 /** Compact per-card "ID | Name" list so extend/repair prompts can reference the route without resending all effects. */
 function formatStateList(ids: string[], cardDetails: Record<string, YGOPROCardDetails>): string {
   if (ids.length === 0) return '  (empty)';

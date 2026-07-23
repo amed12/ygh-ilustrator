@@ -6,6 +6,8 @@ import { CARD_REGISTRY } from '../data/cards';
 import { probabilityToOpenCombo, probabilityToBrick } from '../engine/probability';
 import { Play, Tag, Lightbulb, UploadSimple, DownloadSimple, ShareNetwork, Plus, ChartBar, Brain, Hand, PencilSimple, Trash, FileText } from '@phosphor-icons/react';
 import { DeckRoleBreakdown } from './DeckRoleBreakdown';
+import { EndboardPotential } from './EndboardPotential';
+import { EndboardScenarioDef, EndboardScenarioId, ScenarioCatalog } from '../types';
 
 const EFFICIENCY_STYLES: Record<string, string> = {
   'optimal': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/25',
@@ -35,6 +37,10 @@ interface ComboSelectorProps {
   hasDeckProfile?: boolean;
   isProfileGenerating?: boolean;
   onAnalyzeDeckRoles?: () => void;
+  scenarioCatalog?: ScenarioCatalog | null;
+  generatingScenarioId?: EndboardScenarioId | null;
+  onGenerateScenario?: (scenario: EndboardScenarioDef) => void;
+  onOpenScenarioSheet?: (scenarioId: EndboardScenarioId) => void;
   onCardMouseEnter?: (cardId: string, e: React.MouseEvent) => void;
   onCardMouseLeave?: () => void;
   onCardMouseMove?: (e: React.MouseEvent) => void;
@@ -62,6 +68,10 @@ export function ComboSelector({
   hasDeckProfile = false,
   isProfileGenerating = false,
   onAnalyzeDeckRoles,
+  scenarioCatalog,
+  generatingScenarioId,
+  onGenerateScenario,
+  onOpenScenarioSheet,
   onCardMouseEnter,
   onCardMouseLeave,
   onCardMouseMove
@@ -378,6 +388,20 @@ export function ComboSelector({
         <DeckRoleBreakdown
           deckProfile={deckProfile}
           deck={deck}
+          cardDetails={cardDetails}
+          onCardMouseEnter={onCardMouseEnter}
+          onCardMouseLeave={onCardMouseLeave}
+          onCardMouseMove={onCardMouseMove}
+        />
+      )}
+
+      {/* Endboard Potential — on-demand AI-picked ceiling/floor hand scenarios */}
+      {hasDeckProfile && deckProfile && onGenerateScenario && onOpenScenarioSheet && (
+        <EndboardPotential
+          scenarioCatalog={scenarioCatalog ?? null}
+          generatingScenarioId={generatingScenarioId ?? null}
+          onGenerateScenario={onGenerateScenario}
+          onOpenScenarioSheet={onOpenScenarioSheet}
           cardDetails={cardDetails}
           onCardMouseEnter={onCardMouseEnter}
           onCardMouseLeave={onCardMouseLeave}

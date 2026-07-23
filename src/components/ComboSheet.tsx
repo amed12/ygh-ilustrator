@@ -80,7 +80,10 @@ export function ComboSheet({
 
       {/* Header row: Starting Hand | End Board | Required Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 break-inside-avoid">
-        <SheetHeaderCard title="Starting Hand" icon={<Hand size={12} weight="duotone" />}>
+        <SheetHeaderCard
+          title={handContext?.scenarioId ? 'AI-Hypothesized Hand (Scenario)' : 'Starting Hand'}
+          icon={<Hand size={12} weight="duotone" />}
+        >
           {handContext ? (
             <>
               <div className="mb-2">

@@ -1,15 +1,17 @@
-import { AISettings, ComboRoute, DeckList, DeckProfile, YGOPROCardDetails } from '../types';
+import { AISettings, ComboRoute, DeckList, DeckProfile, EndboardScenarioDef, ScenarioResult, YGOPROCardDetails } from '../types';
 import {
   buildComboPrompt,
   buildMultiComboPrompt,
   buildDeckProfilePrompt,
   buildComboSketchPrompt,
+  buildScenarioSketchPrompt,
   buildExtendComboPrompt,
   buildRepairComboPrompt,
   ComboLineSketch,
   TurnPosition
 } from './prompts';
 import { validateComboRoute, validateDeckProfile, replayComboRoute } from './validator';
+import { ENDBOARD_SCENARIOS } from '../data/endboardScenarios';
 
 /**
  * Cleans the LLM response to remove markdown backticks (e.g. ```json ... ```)
@@ -258,6 +260,120 @@ function sanitizeSketches(parsed: unknown, handCards: string[], deckList: DeckLi
   return sketches;
 }
 
+/**
+ * Validates the AI-chosen hypothetical hand against real per-card copy counts in the Main Deck
+ * (same counting approach as validator.ts's replayComboRoute) and returns the surviving,
+ * exact-size hand along with its sanitized sketch lines. Hallucinated IDs (not in the deck, or
+ * copies beyond what the deck runs) are dropped; if fewer than handSize legal cards survive,
+ * throws so the caller can fall back the same way the sketch-phase-failed path does.
+ */
+function sanitizeScenarioSketch(
+  parsed: unknown,
+  deckList: DeckList,
+  handSize: number
+): { handCardIds: string[]; handRationale: string; sketches: ComboLineSketch[] } {
+  const p = parsed as Record<string, unknown> | null;
+  if (!p || typeof p !== 'object') {
+    throw new Error('Scenario sketch response was not a JSON object.');
+  }
+
+  // Real copy counts across the Main Deck only — the chosen hand must come from there.
+  const mainCopyCounts = new Map<string, number>();
+  for (const id of deckList.main) {
+    mainCopyCounts.set(id, (mainCopyCounts.get(id) ?? 0) + 1);
+  }
+
+  const rawHand = Array.isArray(p.handCardIds) ? p.handCardIds.map(String) : [];
+  const used = new Map<string, number>();
+  const handCardIds: string[] = [];
+  for (const id of rawHand) {
+    const cap = mainCopyCounts.get(id) ?? 0;
+    const usedSoFar = used.get(id) ?? 0;
+    if (cap > 0 && usedSoFar < cap) {
+      handCardIds.push(id);
+      used.set(id, usedSoFar + 1);
+    }
+  }
+
+  if (handCardIds.length !== handSize) {
+    throw new Error(
+      `Scenario sketch produced an invalid hand: expected ${handSize} legal cards, got ${handCardIds.length} after copy-count validation.`
+    );
+  }
+
+  const sketches = sanitizeSketches(p, handCardIds, deckList);
+  if (sketches.length === 0) {
+    throw new Error('Scenario sketch produced a hand but no viable combo lines from it.');
+  }
+
+  return {
+    handCardIds,
+    handRationale: typeof p.handRationale === 'string' ? p.handRationale : '',
+    sketches
+  };
+}
+
+/**
+ * Generates one on-demand "Endboard Potential" scenario: the model picks its own opening hand
+ * (best or worst honest draw per the scenario definition), sketches viable lines from it, and
+ * only the single top-ranked line is expanded into a full route through the existing deep-line
+ * pipeline (sketch → route → repair → extend) — cheaper than expanding every sketched line
+ * since this is a "what's the ceiling/floor" question, not a full solver run.
+ */
+export async function generateEndboardScenario(
+  settings: AISettings,
+  deckList: DeckList,
+  cardNames: Record<string, string>,
+  cardDetails: Record<string, YGOPROCardDetails>,
+  deckProfile: DeckProfile,
+  scenario: EndboardScenarioDef
+): Promise<ScenarioResult> {
+  const raw = await callProvider(
+    settings,
+    buildScenarioSketchPrompt(deckList, cardNames, scenario.turnPosition, scenario.handSize, scenario.handQuality, cardDetails, deckProfile),
+    'scenario-sketch', deckList, cardNames, [], scenario.turnPosition, cardDetails,
+    { deckProfile, handSize: scenario.handSize, handQuality: scenario.handQuality }
+  );
+  const { handCardIds, handRationale, sketches } = sanitizeScenarioSketch(
+    parseJsonPayload(raw, `scenario sketch "${scenario.id}"`), deckList, scenario.handSize
+  );
+
+  const topSketch = sketches[0];
+  const route = await generateDeepRoute(
+    settings, deckList, cardNames, handCardIds, scenario.turnPosition, cardDetails, deckProfile, topSketch
+  );
+
+  return {
+    version: '1.0',
+    scenarioId: scenario.id,
+    deckHash: deckProfile.deckHash,
+    deckProfileVersion: deckProfile.version,
+    generatedAt: new Date().toISOString(),
+    hypotheticalHand: handCardIds,
+    handRationale,
+    route
+  };
+}
+
+/**
+ * Generates all ENDBOARD_SCENARIOS in parallel and returns the settled results. Not called
+ * eagerly by the v1 UI (each scenario is a 30-90s multi-call pipeline) — kept for potential
+ * future bulk use (e.g. a background pre-warm).
+ */
+export async function generateEndboardScenarios(
+  settings: AISettings,
+  deckList: DeckList,
+  cardNames: Record<string, string>,
+  cardDetails: Record<string, YGOPROCardDetails>,
+  deckProfile: DeckProfile
+): Promise<PromiseSettledResult<ScenarioResult>[]> {
+  return Promise.allSettled(
+    ENDBOARD_SCENARIOS.map(scenario =>
+      generateEndboardScenario(settings, deckList, cardNames, cardDetails, deckProfile, scenario)
+    )
+  );
+}
+
 /** Route ids are model-chosen and generated in parallel — suffix collisions instead of dropping routes. */
 function dedupeRouteIds(routes: ComboRoute[]): ComboRoute[] {
   const seen = new Set<string>();
@@ -487,7 +603,7 @@ export async function generateDeckProfile(
 async function callProvider(
   settings: AISettings,
   prompt: string,
-  mode: 'single' | 'multi' | 'profile' | 'sketch' | 'route' | 'extend' | 'repair',
+  mode: 'single' | 'multi' | 'profile' | 'sketch' | 'route' | 'extend' | 'repair' | 'scenario-sketch',
   deckList: DeckList,
   cardNames: Record<string, string>,
   handCards: string[],

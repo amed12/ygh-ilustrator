@@ -102,6 +102,36 @@ export interface ComboHandContext {
   handCardIds: string[];
   turnPosition: 'going-first' | 'going-second';
   generatedAt: string;
+  /** Set when this hand context came from an on-demand Endboard Potential scenario, not a real drawn hand. */
+  scenarioId?: EndboardScenarioId;
+}
+
+export type EndboardScenarioId = 'going-first-ceiling' | 'going-second-ceiling' | 'going-first-floor';
+
+export interface EndboardScenarioDef {
+  id: EndboardScenarioId;
+  label: string;
+  turnPosition: 'going-first' | 'going-second';
+  handSize: 5 | 6;
+  handQuality: 'best' | 'worst';
+}
+
+export interface ScenarioResult {
+  version: '1.0';
+  scenarioId: EndboardScenarioId;
+  deckHash: string;
+  deckProfileVersion: string;
+  generatedAt: string;
+  hypotheticalHand: string[];
+  handRationale: string;
+  route: ComboRoute;
+}
+
+export interface ScenarioCatalog {
+  version: '1.0';
+  deckHash: string;
+  deckProfileVersion: string;
+  results: Partial<Record<EndboardScenarioId, ScenarioResult>>;
 }
 
 export interface ComboExportFile {

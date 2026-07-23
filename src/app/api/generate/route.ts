@@ -4,6 +4,7 @@ import {
   buildMultiComboPrompt,
   buildDeckProfilePrompt,
   buildComboSketchPrompt,
+  buildScenarioSketchPrompt,
   buildExtendComboPrompt,
   buildRepairComboPrompt,
   ComboLineSketch,
@@ -62,7 +63,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { deckList, cardNames, handCards, turnPosition, mode, cardDetails } = body;
     // Deep-line pipeline payload (all optional; validated per-mode below)
-    const { deckProfile, lineFocus, route, finalState, replayErrors } = body;
+    const { deckProfile, lineFocus, route, finalState, replayErrors, handSize, handQuality } = body;
 
     if (!deckList || !cardNames) {
       return NextResponse.json(
@@ -131,6 +132,10 @@ export async function POST(req: NextRequest) {
       prompt = buildMultiComboPrompt(deckList, cardNames, resolvedHand, resolvedTurn, resolvedCardDetails, resolvedProfile);
     } else if (mode === 'sketch') {
       prompt = buildComboSketchPrompt(deckList, cardNames, resolvedHand, resolvedTurn, resolvedCardDetails, resolvedProfile);
+    } else if (mode === 'scenario-sketch') {
+      const resolvedHandSize = handSize === 6 ? 6 : 5;
+      const resolvedHandQuality = handQuality === 'worst' ? 'worst' : 'best';
+      prompt = buildScenarioSketchPrompt(deckList, cardNames, resolvedTurn, resolvedHandSize, resolvedHandQuality, resolvedCardDetails, resolvedProfile);
     } else if (mode === 'extend') {
       if (!resolvedRoute || !resolvedFinalState) {
         return NextResponse.json({ error: 'Mode "extend" requires route and finalState.' }, { status: 400 });
