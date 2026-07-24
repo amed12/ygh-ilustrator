@@ -19,7 +19,7 @@ import { ENDBOARD_SCENARIOS } from '../data/endboardScenarios';
  */
 function cleanJsonResponse(text: string): string {
   let cleaned = text.trim();
-  
+
   // Remove starting ```json or ```
   if (cleaned.startsWith('```')) {
     const lines = cleaned.split('\n');
@@ -31,7 +31,20 @@ function cleanJsonResponse(text: string): string {
     }
     cleaned = lines.join('\n').trim();
   }
-  
+
+  // Some models prepend free-text reasoning before the JSON payload despite
+  // being told not to ("We are to build a combo line for..."). If the
+  // response doesn't already start with a JSON opener, drop everything
+  // before the first '{' or '[' so parsing/repair has a real chance.
+  if (cleaned.length > 0 && cleaned[0] !== '{' && cleaned[0] !== '[') {
+    const firstBrace = cleaned.indexOf('{');
+    const firstBracket = cleaned.indexOf('[');
+    const candidates = [firstBrace, firstBracket].filter((i) => i !== -1);
+    if (candidates.length > 0) {
+      cleaned = cleaned.slice(Math.min(...candidates)).trim();
+    }
+  }
+
   return cleaned;
 }
 
