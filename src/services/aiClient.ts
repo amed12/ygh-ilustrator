@@ -609,6 +609,19 @@ export async function generateDeckProfile(
   return validation.data!;
 }
 
+type CallProviderMode = 'single' | 'multi' | 'profile' | 'sketch' | 'route' | 'extend' | 'repair' | 'scenario-sketch';
+
+/**
+ * 'sketch' and 'scenario-sketch' hand the model the deck's ENTIRE main deck effect text plus
+ * the role map and ask it to reason backwards from the end board — much heavier analysis than
+ * 'route'/'extend'/'repair', which work off a fixed short hand. Reasoning-heavy models can burn
+ * the whole token budget narrating that analysis before ever emitting JSON, so these modes get
+ * extra headroom.
+ */
+function maxTokensForMode(mode: CallProviderMode): number {
+  return mode === 'sketch' || mode === 'scenario-sketch' ? 24000 : 16000;
+}
+
 /**
  * Internal helper: sends prompt to the selected provider and returns raw text.
  * Support local proxy API call in settings.useDemo mode.
@@ -616,7 +629,7 @@ export async function generateDeckProfile(
 async function callProvider(
   settings: AISettings,
   prompt: string,
-  mode: 'single' | 'multi' | 'profile' | 'sketch' | 'route' | 'extend' | 'repair' | 'scenario-sketch',
+  mode: CallProviderMode,
   deckList: DeckList,
   cardNames: Record<string, string>,
   handCards: string[],
@@ -663,13 +676,15 @@ async function callProvider(
   const { provider, model } = settings;
   let responseText = '';
 
+  const maxTokens = maxTokensForMode(mode);
+
   if (provider === 'gemini') {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
     const r = await fetch(url, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 16000 }
+        generationConfig: { responseMimeType: 'application/json', maxOutputTokens: maxTokens }
       })
     });
     if (!r.ok) throw new Error(`Gemini API Error (${r.status}): ${await r.text()}`);
@@ -679,7 +694,7 @@ async function callProvider(
     const r = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
-      body: JSON.stringify({ model, max_tokens: 16000, messages: [{ role: 'user', content: prompt }] })
+      body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] })
     });
     if (!r.ok) throw new Error(`OpenAI API Error (${r.status}): ${await r.text()}`);
     const j = await r.json();
@@ -691,7 +706,7 @@ async function callProvider(
         'Content-Type': 'application/json', 'x-api-key': key,
         'anthropic-version': '2023-06-01', 'dangerously-allow-browser': 'true'
       } as HeadersInit,
-      body: JSON.stringify({ model, max_tokens: 16000, messages: [{ role: 'user', content: prompt }] })
+      body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] })
     }).catch(() => { throw new Error('Anthropic CORS block — use OpenRouter or Gemini.'); });
     if (!r.ok) throw new Error(`Anthropic API Error (${r.status}): ${await r.text()}`);
     const j = await r.json();
@@ -706,7 +721,7 @@ async function callProvider(
       },
       body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] })
     });
-    let r = await callOpenRouter(16000);
+    let r = await callOpenRouter(maxTokens);
     if (r.status === 402) {
       // Low-credit accounts can't afford the full budget; retry with what
       // OpenRouter says the account can pay for ("can only afford N tokens").
@@ -715,7 +730,7 @@ async function callProvider(
       // Below ~4000 output tokens the combo JSON is guaranteed to truncate — fail loudly
       // instead of returning a silently shallow/broken route.
       if (Number.isFinite(affordable) && affordable >= 4000) {
-        console.warn(`OpenRouter credits are low: retrying with max_tokens=${Math.floor(affordable * 0.9)} (wanted 16000). Combo depth may suffer — top up at https://openrouter.ai/settings/credits or pick a cheaper/free model.`);
+        console.warn(`OpenRouter credits are low: retrying with max_tokens=${Math.floor(affordable * 0.9)} (wanted ${maxTokens}). Combo depth may suffer — top up at https://openrouter.ai/settings/credits or pick a cheaper/free model.`);
         r = await callOpenRouter(Math.floor(affordable * 0.9));
       } else {
         throw new Error(`OpenRouter credits are too low to generate a complete combo (needs ≥4000 output tokens). Top up at https://openrouter.ai/settings/credits or switch to a 🆓 free model in Settings. Original error: ${errText}`);
@@ -729,7 +744,7 @@ async function callProvider(
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
       body: JSON.stringify({
-        model, max_tokens: 16000, messages: [{ role: 'user', content: prompt }],
+        model, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }],
         ...(model === 'deepseek-chat' ? { response_format: { type: 'json_object' } } : {})
       })
     });

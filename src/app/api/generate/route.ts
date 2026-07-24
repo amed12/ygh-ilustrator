@@ -163,7 +163,9 @@ export async function POST(req: NextRequest) {
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           responseMimeType: 'application/json',
-          maxOutputTokens: 16000
+          // 'sketch'/'scenario-sketch' reason over the whole deck's effect text before
+          // answering — give them more headroom so the JSON isn't cut off mid-output.
+          maxOutputTokens: mode === 'sketch' || mode === 'scenario-sketch' ? 24000 : 16000
         }
       })
     });
